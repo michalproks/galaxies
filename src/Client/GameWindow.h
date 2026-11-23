@@ -16,12 +16,12 @@ enum class CameraCommandType : std::uint8_t {
     ZOOM_IN,
     ZOOM_OUT,
     ZOOM_AT,
-    RIGHT_DRAG_BEGIN,
-    RIGHT_DRAG_UPDATE,
-    RIGHT_DRAG_END,
+    MIDDLE_DRAG_BEGIN,
+    MIDDLE_DRAG_UPDATE,
+    MIDDLE_DRAG_END,
 };
 
-/** Carries world deltas for PAN, pixel positions for ZOOM_AT and RIGHT_DRAG_BEGIN, pixel deltas for drag updates,
+/** Carries world deltas for PAN, pixel positions for ZOOM_AT and MIDDLE_DRAG_BEGIN, pixel deltas for drag updates,
  * and a positive zoom multiplier for ZOOM_AT.
  */
 struct CameraCommand {
@@ -69,7 +69,7 @@ private:
     std::vector<CameraCommand> mCameraCommands;
     Simulation::Vector2 mDragAnchorWorld{};
     Simulation::Vector2 mDragCursor{};
-    bool mRightButtonDown{};
+    bool mMiddleButtonDown{};
     bool mDragging{};
 };
 

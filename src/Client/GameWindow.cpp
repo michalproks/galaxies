@@ -97,21 +97,21 @@ bool GameWindow::processEvents(double frameSeconds) {
         }
 
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
-            event.button.windowID == SDL_GetWindowID(mWindow) && event.button.button == SDL_BUTTON_RIGHT) {
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !mRightButtonDown) {
+            event.button.windowID == SDL_GetWindowID(mWindow) && event.button.button == SDL_BUTTON_MIDDLE) {
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !mMiddleButtonDown) {
                 Simulation::Vector2 const cursor = toPixelPosition(event.button.x, event.button.y);
-                mCameraCommands.push_back({CameraCommandType::RIGHT_DRAG_BEGIN, cursor.x, cursor.y});
-                mRightButtonDown = true;
-            } else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && mRightButtonDown) {
-                mCameraCommands.push_back({CameraCommandType::RIGHT_DRAG_END});
-                mRightButtonDown = false;
+                mCameraCommands.push_back({CameraCommandType::MIDDLE_DRAG_BEGIN, cursor.x, cursor.y});
+                mMiddleButtonDown = true;
+            } else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && mMiddleButtonDown) {
+                mCameraCommands.push_back({CameraCommandType::MIDDLE_DRAG_END});
+                mMiddleButtonDown = false;
             }
         }
 
         if (event.type == SDL_EVENT_MOUSE_MOTION && event.motion.windowID == SDL_GetWindowID(mWindow) &&
-            mRightButtonDown) {
+            mMiddleButtonDown) {
             Simulation::Vector2 const delta = toPixelDelta(event.motion.xrel, event.motion.yrel);
-            mCameraCommands.push_back({CameraCommandType::RIGHT_DRAG_UPDATE, delta.x, delta.y});
+            mCameraCommands.push_back({CameraCommandType::MIDDLE_DRAG_UPDATE, delta.x, delta.y});
         }
     }
 
@@ -153,14 +153,14 @@ void GameWindow::updateCamera() {
                 mCamera.zoomAt(worldPoint, command.value);
             }
             break;
-        case CameraCommandType::RIGHT_DRAG_BEGIN:
+        case CameraCommandType::MIDDLE_DRAG_BEGIN:
             if (extent.width > 0 && extent.height > 0) {
                 mDragCursor = {command.x, command.y};
                 mDragAnchorWorld = mCamera.screenToWorld(mDragCursor, extent.width, extent.height);
                 mDragging = true;
             }
             break;
-        case CameraCommandType::RIGHT_DRAG_UPDATE:
+        case CameraCommandType::MIDDLE_DRAG_UPDATE:
             if (mDragging && extent.width > 0 && extent.height > 0) {
                 mDragCursor.x += command.x;
                 mDragCursor.y += command.y;
@@ -172,7 +172,7 @@ void GameWindow::updateCamera() {
                 mCamera.pan(desiredCenter.x - currentCenter.x, desiredCenter.y - currentCenter.y);
             }
             break;
-        case CameraCommandType::RIGHT_DRAG_END:
+        case CameraCommandType::MIDDLE_DRAG_END:
             mDragging = false;
             break;
         }
