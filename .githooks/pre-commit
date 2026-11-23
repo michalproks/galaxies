@@ -56,12 +56,21 @@ if [[ ! -f "$build_dir/compile_commands.json" ]]; then
     exit 1
 fi
 
+mapfile -t clang_tidy_include_args < <(
+    grep -oE -- '-I[^[:space:]"]+' "$build_dir/compile_commands.json" |
+        sed -e 's/^-I/\/I/' -e 's#\\\\#\\#g' |
+        sort -u |
+        sed 's/^/--extra-arg-before=/'
+)
+
 tidy_failed=0
 for file in "${changed_files[@]}"; do
     case "$file" in
         *.cpp|*.cc|*.cxx)
             if ! "$clang_tidy" -p "$build_dir" --warnings-as-errors='*' \
-                --extra-arg-before=-Wno-unused-command-line-argument "$file"; then
+                --extra-arg-before=-Wno-unused-command-line-argument \
+                --header-filter='.*[\\/]src[\\/].*' \
+                "${clang_tidy_include_args[@]}" "$file"; then
                 tidy_failed=1
             fi
             ;;
