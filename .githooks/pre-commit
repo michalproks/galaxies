@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+mapfile -d '' changed_files < <(
+    git diff --cached --name-only --diff-filter=ACMR -z -- \
+        '*.cpp' '*.cc' '*.cxx' '*.h' '*.hh' '*.hpp' '*.hxx'
+)
+
+if ((${#changed_files[@]} == 0)); then
+    exit 0
+fi
+
+clang_format='/c/Program Files/LLVM/bin/clang-format.exe'
+if [[ ! -f "$clang_format" ]]; then
+    echo "clang-format was not found at C:\\Program Files\\LLVM\\bin\\clang-format.exe." >&2
+    exit 1
+fi
+
+format_failed=0
+for file in "${changed_files[@]}"; do
+    if ! "$clang_format" --dry-run --Werror "$file"; then
+        format_failed=1
+    fi
+done
+
+if ((format_failed)); then
+    echo "Format changed C++ files with clang-format, then stage them before committing." >&2
+    exit 1
+fi
+
+has_cpp_sources=0
+for file in "${changed_files[@]}"; do
+    case "$file" in
+        *.cpp|*.cc|*.cxx)
+            has_cpp_sources=1
+            break
+            ;;
+    esac
+done
+
+if ((!has_cpp_sources)); then
+    exit 0
+fi
+
+clang_tidy='/c/Program Files/LLVM/bin/clang-tidy.exe'
+build_dir='build/windows-msvc'
+if [[ ! -f "$clang_tidy" ]]; then
+    echo "clang-tidy was not found at C:\\Program Files\\LLVM\\bin\\clang-tidy.exe." >&2
+    exit 1
+fi
+if [[ ! -f "$build_dir/compile_commands.json" ]]; then
+    echo "Configure the project with 'cmake --preset windows-msvc' before committing C++ changes." >&2
+    exit 1
+fi
+
+tidy_failed=0
+for file in "${changed_files[@]}"; do
+    case "$file" in
+        *.cpp|*.cc|*.cxx)
+            if ! "$clang_tidy" -p "$build_dir" --warnings-as-errors='*' \
+                --extra-arg-before=-Wno-unused-command-line-argument "$file"; then
+                tidy_failed=1
+            fi
+            ;;
+    esac
+done
+
+exit "$tidy_failed"

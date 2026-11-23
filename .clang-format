@@ -1,0 +1,17 @@
+AccessModifierOffset: -4
+AllowShortFunctionsOnASingleLine:
+  Empty: false
+  Inline: false
+  Other: false
+BreakTemplateDeclarations: Yes
+PackArguments:
+  BinPack: OnePerLine
+PackParameters:
+  BinPack: OnePerLine
+BreakConstructorInitializers: BeforeComma
+ColumnLimit: 120
+IndentWidth: 4
+FixNamespaceComments: true
+NamespaceIndentation: Inner
+PackConstructorInitializers: Never
+SortIncludes: true
