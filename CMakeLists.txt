@@ -36,6 +36,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
 
 add_library(galaxies_compile_options INTERFACE)
 target_compile_features(galaxies_compile_options INTERFACE cxx_std_23)
@@ -47,13 +48,31 @@ target_compile_options(
         /external:W0
         /external:anglebrackets
         /permissive-
+        /EHsc
         /Zc:__cplusplus
 )
 
 include(CTest)
+find_package(SDL3 CONFIG REQUIRED)
+find_package(VulkanHeaders CONFIG REQUIRED)
+find_package(VulkanLoader CONFIG REQUIRED)
+
 if(BUILD_TESTING)
     find_package(Catch2 3.16.1 CONFIG REQUIRED)
     find_package(trompeloeil CONFIG REQUIRED)
 endif()
 
+function(copy_conan_runtime_dlls target)
+    add_custom_command(
+        TARGET ${target}
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:${target}>
+            $<TARGET_FILE_DIR:${target}>
+        COMMAND_EXPAND_LISTS
+        VERBATIM
+    )
+endfunction()
+
+add_subdirectory(src/Client)
 add_subdirectory(src/Main)

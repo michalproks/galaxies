@@ -1,8 +1,5 @@
 AccessModifierOffset: -4
-AllowShortFunctionsOnASingleLine:
-  Empty: false
-  Inline: false
-  Other: false
+AllowShortFunctionsOnASingleLine: None
 BreakTemplateDeclarations: Yes
 PackArguments:
   BinPack: OnePerLine
