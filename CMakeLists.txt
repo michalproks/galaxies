@@ -74,5 +74,7 @@ function(copy_conan_runtime_dlls target)
     )
 endfunction()
 
+add_subdirectory(src/Simulation)
+add_subdirectory(src/Server)
 add_subdirectory(src/Client)
 add_subdirectory(src/Main)

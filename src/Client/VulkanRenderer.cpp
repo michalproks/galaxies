@@ -1,11 +1,17 @@
 #include "VulkanRenderer.h"
 
+#include "CircleFragmentShader.h"
+#include "CircleVertexShader.h"
+
 #include <SDL3/SDL_vulkan.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <limits>
+#include <numbers>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -14,10 +20,23 @@
 namespace Client {
 namespace {
 
+    constexpr std::size_t CIRCLE_SEGMENT_COUNT = 48;
+    constexpr std::size_t MAX_VERTEX_COUNT = 4096;
+
     void checkVk(VkResult result, char const *operation) {
         if (result != VK_SUCCESS) {
             throw std::runtime_error(std::string(operation) + " failed with VkResult " + std::to_string(result));
         }
+    }
+
+    VkShaderModule createShaderModule(VkDevice device, std::span<std::uint32_t const> code) {
+        VkShaderModuleCreateInfo shaderModuleInfo{};
+        shaderModuleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+        shaderModuleInfo.codeSize = code.size_bytes();
+        shaderModuleInfo.pCode = code.data();
+        VkShaderModule shaderModule{};
+        checkVk(vkCreateShaderModule(device, &shaderModuleInfo, nullptr, &shaderModule), "vkCreateShaderModule");
+        return shaderModule;
     }
 
     bool supportsSwapchain(VkPhysicalDevice device) {
@@ -94,6 +113,7 @@ void VulkanRenderer::initialize(GameWindow const &window) {
     commandPoolInfo.queueFamilyIndex = mQueueFamilyIndex;
     checkVk(vkCreateCommandPool(mDevice, &commandPoolInfo, nullptr, &mCommandPool), "vkCreateCommandPool");
 
+    createVertexBuffer();
     createFrameSynchronization();
     recreateSwapchain();
 }
@@ -153,6 +173,43 @@ void VulkanRenderer::createLogicalDevice() {
     vkGetDeviceQueue(mDevice, mQueueFamilyIndex, 0, &mQueue);
 }
 
+void VulkanRenderer::createVertexBuffer() {
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = static_cast<VkDeviceSize>(MAX_VERTEX_COUNT * sizeof(Vertex));
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    checkVk(vkCreateBuffer(mDevice, &bufferInfo, nullptr, &mVertexBuffer), "vkCreateBuffer");
+
+    VkMemoryRequirements const memoryRequirements = [&] {
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(mDevice, mVertexBuffer, &requirements);
+        return requirements;
+    }();
+    VkMemoryAllocateInfo allocationInfo{};
+    allocationInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocationInfo.allocationSize = memoryRequirements.size;
+    VkMemoryPropertyFlags const vertexMemoryProperties =
+        static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) |
+        static_cast<VkMemoryPropertyFlags>(VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    allocationInfo.memoryTypeIndex = findMemoryType(memoryRequirements.memoryTypeBits, vertexMemoryProperties);
+    checkVk(vkAllocateMemory(mDevice, &allocationInfo, nullptr, &mVertexMemory), "vkAllocateMemory");
+    checkVk(vkBindBufferMemory(mDevice, mVertexBuffer, mVertexMemory, 0), "vkBindBufferMemory");
+    mVertexBufferSize = bufferInfo.size;
+}
+
+std::uint32_t VulkanRenderer::findMemoryType(std::uint32_t typeFilter, VkMemoryPropertyFlags properties) const {
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
+    vkGetPhysicalDeviceMemoryProperties(mPhysicalDevice, &memoryProperties);
+    for (std::uint32_t index = 0; index < memoryProperties.memoryTypeCount; ++index) {
+        VkMemoryPropertyFlags const available = memoryProperties.memoryTypes[index].propertyFlags;
+        if ((typeFilter & (1U << index)) != 0 && (available & properties) == properties) {
+            return index;
+        }
+    }
+    throw std::runtime_error("No Vulkan memory type satisfies the vertex-buffer requirements.");
+}
+
 void VulkanRenderer::createFrameSynchronization() {
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -170,6 +227,7 @@ void VulkanRenderer::recreateSwapchain() {
     destroySwapchainResources();
     createSwapchain();
     createRenderPass();
+    createGraphicsPipeline();
     createImageViews();
     createFramebuffers();
     createCommandBuffers();
@@ -303,6 +361,123 @@ void VulkanRenderer::createRenderPass() {
     checkVk(vkCreateRenderPass(mDevice, &renderPassInfo, nullptr, &mRenderPass), "vkCreateRenderPass");
 }
 
+void VulkanRenderer::createGraphicsPipeline() {
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(float) * 4U;
+
+    if (mPipelineLayout == VK_NULL_HANDLE) {
+        VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+        pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+        checkVk(vkCreatePipelineLayout(mDevice, &pipelineLayoutInfo, nullptr, &mPipelineLayout),
+                "vkCreatePipelineLayout");
+    }
+
+    VkShaderModule vertexShader = createShaderModule(mDevice, Shaders::CIRCLE_VERTEX_SPIRV);
+    VkShaderModule fragmentShader{};
+    try {
+        fragmentShader = createShaderModule(mDevice, Shaders::CIRCLE_FRAGMENT_SPIRV);
+
+        std::array<VkPipelineShaderStageCreateInfo, 2>
+            shaderStages{}; // NOLINT(bugprone-invalid-enum-default-initialization): stages are assigned before use.
+        shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        shaderStages[0].module = vertexShader;
+        shaderStages[0].pName = "main";
+        shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStages[1].module = fragmentShader;
+        shaderStages[1].pName = "main";
+
+        VkVertexInputBindingDescription vertexBinding{};
+        vertexBinding.binding = 0;
+        vertexBinding.stride = sizeof(Vertex);
+        vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        VkVertexInputAttributeDescription vertexAttribute{};
+        vertexAttribute.location = 0;
+        vertexAttribute.binding = 0;
+        vertexAttribute.format = VK_FORMAT_R32G32_SFLOAT;
+        vertexAttribute.offset = 0;
+        VkPipelineVertexInputStateCreateInfo vertexInput{};
+        vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        vertexInput.vertexBindingDescriptionCount = 1;
+        vertexInput.pVertexBindingDescriptions = &vertexBinding;
+        vertexInput.vertexAttributeDescriptionCount = 1;
+        vertexInput.pVertexAttributeDescriptions = &vertexAttribute;
+
+        VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+        inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+        inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
+        inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+        VkPipelineViewportStateCreateInfo viewportState{};
+        viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+        viewportState.viewportCount = 1;
+        viewportState.scissorCount = 1;
+
+        VkPipelineRasterizationStateCreateInfo rasterization{};
+        rasterization.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+        rasterization.depthClampEnable = VK_FALSE;
+        rasterization.rasterizerDiscardEnable = VK_FALSE;
+        rasterization.polygonMode = VK_POLYGON_MODE_FILL;
+        rasterization.cullMode = VK_CULL_MODE_NONE;
+        rasterization.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        rasterization.depthBiasEnable = VK_FALSE;
+        rasterization.lineWidth = 1.0F;
+
+        VkPipelineMultisampleStateCreateInfo
+            multisampling{}; // NOLINT(bugprone-invalid-enum-default-initialization): samples are assigned before use.
+        multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+        multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.blendEnable = VK_FALSE;
+        colorBlendAttachment.colorWriteMask = static_cast<VkColorComponentFlags>(VK_COLOR_COMPONENT_R_BIT) |
+                                              static_cast<VkColorComponentFlags>(VK_COLOR_COMPONENT_G_BIT) |
+                                              static_cast<VkColorComponentFlags>(VK_COLOR_COMPONENT_B_BIT) |
+                                              static_cast<VkColorComponentFlags>(VK_COLOR_COMPONENT_A_BIT);
+        VkPipelineColorBlendStateCreateInfo colorBlending{};
+        colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+        colorBlending.logicOpEnable = VK_FALSE;
+        colorBlending.attachmentCount = 1;
+        colorBlending.pAttachments = &colorBlendAttachment;
+
+        std::array<VkDynamicState, 2> const dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+        VkPipelineDynamicStateCreateInfo dynamicState{};
+        dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+        dynamicState.dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size());
+        dynamicState.pDynamicStates = dynamicStates.data();
+
+        VkGraphicsPipelineCreateInfo pipelineInfo{};
+        pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+        pipelineInfo.stageCount = static_cast<std::uint32_t>(shaderStages.size());
+        pipelineInfo.pStages = shaderStages.data();
+        pipelineInfo.pVertexInputState = &vertexInput;
+        pipelineInfo.pInputAssemblyState = &inputAssembly;
+        pipelineInfo.pViewportState = &viewportState;
+        pipelineInfo.pRasterizationState = &rasterization;
+        pipelineInfo.pMultisampleState = &multisampling;
+        pipelineInfo.pColorBlendState = &colorBlending;
+        pipelineInfo.pDynamicState = &dynamicState;
+        pipelineInfo.layout = mPipelineLayout;
+        pipelineInfo.renderPass = mRenderPass;
+        pipelineInfo.subpass = 0;
+        checkVk(vkCreateGraphicsPipelines(mDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &mGraphicsPipeline),
+                "vkCreateGraphicsPipelines");
+    } catch (...) {
+        if (fragmentShader != VK_NULL_HANDLE) {
+            vkDestroyShaderModule(mDevice, fragmentShader, nullptr);
+        }
+        vkDestroyShaderModule(mDevice, vertexShader, nullptr);
+        throw;
+    }
+    vkDestroyShaderModule(mDevice, fragmentShader, nullptr);
+    vkDestroyShaderModule(mDevice, vertexShader, nullptr);
+}
+
 void VulkanRenderer::createImageViews() {
     mImageViews.reserve(mImages.size());
     for (VkImage image : mImages) {
@@ -347,13 +522,11 @@ void VulkanRenderer::createCommandBuffers() {
     allocationInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocationInfo.commandBufferCount = static_cast<std::uint32_t>(mCommandBuffers.size());
     checkVk(vkAllocateCommandBuffers(mDevice, &allocationInfo, mCommandBuffers.data()), "vkAllocateCommandBuffers");
-
-    for (std::size_t index = 0; index < mCommandBuffers.size(); ++index) {
-        recordCommandBuffer(index);
-    }
 }
 
-void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex) const {
+void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex,
+                                         Server::GameSnapshot const &snapshot,
+                                         std::vector<BodyDraw> const &bodyDraws) const {
     VkCommandBuffer const commandBuffer = mCommandBuffers[imageIndex];
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -369,11 +542,44 @@ void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex) const {
     renderPassInfo.clearValueCount = 1;
     renderPassInfo.pClearValues = &clearValue;
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mGraphicsPipeline);
+    VkDeviceSize const vertexOffset = 0;
+    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mVertexBuffer, &vertexOffset);
+    VkViewport viewport{};
+    viewport.x = 0.0F;
+    viewport.y = 0.0F;
+    viewport.width = static_cast<float>(mExtent.width);
+    viewport.height = static_cast<float>(mExtent.height);
+    viewport.minDepth = 0.0F;
+    viewport.maxDepth = 1.0F;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    VkRect2D scissor{};
+    scissor.extent = mExtent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+    for (std::size_t index = 0; index < bodyDraws.size(); ++index) {
+        Simulation::Color const &color = snapshot.bodies[index].color;
+        std::array<float, 4> const pushColor{color.red, color.green, color.blue, 1.0F};
+        vkCmdPushConstants(commandBuffer,
+                           mPipelineLayout,
+                           VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0,
+                           static_cast<std::uint32_t>(sizeof(pushColor)),
+                           pushColor.data());
+        vkCmdDraw(commandBuffer, bodyDraws[index].vertexCount, 1, bodyDraws[index].firstVertex, 0);
+    }
+
     vkCmdEndRenderPass(commandBuffer);
     checkVk(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 }
 
-void VulkanRenderer::renderBlackFrame() {
+void VulkanRenderer::renderFrame(Camera const &camera, Server::GameSnapshot const &snapshot, VkExtent2D viewport) {
+    if (viewport.width == 0 || viewport.height == 0 || viewport.width != mExtent.width ||
+        viewport.height != mExtent.height) {
+        throw std::invalid_argument("The render viewport must match the current non-zero swapchain extent.");
+    }
+
     for (;;) {
         checkVk(vkWaitForFences(mDevice, 1, &mInFlightFence, VK_TRUE, std::numeric_limits<std::uint64_t>::max()),
                 "vkWaitForFences");
@@ -387,12 +593,51 @@ void VulkanRenderer::renderBlackFrame() {
                                                              &imageIndex);
         if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
             recreateSwapchain();
+            if (viewport.width != mExtent.width || viewport.height != mExtent.height) {
+                return;
+            }
             continue;
         }
         if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
             checkVk(acquireResult, "vkAcquireNextImageKHR");
         }
 
+        std::vector<Vertex> vertices;
+        std::vector<BodyDraw> bodyDraws;
+        std::size_t const verticesPerCircle = CIRCLE_SEGMENT_COUNT + 2;
+        if (snapshot.bodies.size() > MAX_VERTEX_COUNT / verticesPerCircle) {
+            throw std::length_error("The game snapshot contains more bodies than the vertex buffer can render.");
+        }
+        vertices.reserve(snapshot.bodies.size() * verticesPerCircle);
+        bodyDraws.reserve(snapshot.bodies.size());
+        for (Server::BodySnapshot const &body : snapshot.bodies) {
+            Simulation::Vector2 const center = camera.worldToNDC(body.position, viewport.width, viewport.height);
+            std::uint32_t const firstVertex = static_cast<std::uint32_t>(vertices.size());
+            vertices.push_back({static_cast<float>(center.x), static_cast<float>(center.y)});
+            for (std::size_t segment = 0; segment <= CIRCLE_SEGMENT_COUNT; ++segment) {
+                double const angle = 2.0 * std::numbers::pi_v<double> * static_cast<double>(segment) /
+                                     static_cast<double>(CIRCLE_SEGMENT_COUNT);
+                Simulation::Vector2 const point = camera.worldToNDC(
+                    {body.position.x + body.radius * std::cos(angle), body.position.y + body.radius * std::sin(angle)},
+                    viewport.width,
+                    viewport.height);
+                vertices.push_back({static_cast<float>(point.x), static_cast<float>(point.y)});
+            }
+            bodyDraws.push_back(
+                {firstVertex, static_cast<std::uint32_t>(vertices.size() - static_cast<std::size_t>(firstVertex))});
+        }
+        VkDeviceSize const vertexDataSize = static_cast<VkDeviceSize>(vertices.size() * sizeof(Vertex));
+        if (vertexDataSize > mVertexBufferSize) {
+            throw std::length_error("The game snapshot exceeds the allocated Vulkan vertex buffer.");
+        }
+        if (!vertices.empty()) {
+            void *mappedMemory{};
+            checkVk(vkMapMemory(mDevice, mVertexMemory, 0, vertexDataSize, 0, &mappedMemory), "vkMapMemory");
+            std::memcpy(mappedMemory, vertices.data(), static_cast<std::size_t>(vertexDataSize));
+            vkUnmapMemory(mDevice, mVertexMemory);
+        }
+        checkVk(vkResetCommandBuffer(mCommandBuffers[imageIndex], 0), "vkResetCommandBuffer");
+        recordCommandBuffer(imageIndex, snapshot, bodyDraws);
         checkVk(vkResetFences(mDevice, 1, &mInFlightFence), "vkResetFences");
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -425,6 +670,10 @@ void VulkanRenderer::renderBlackFrame() {
     }
 }
 
+VkExtent2D VulkanRenderer::viewport() const {
+    return mExtent;
+}
+
 void VulkanRenderer::destroySwapchainResources() {
     if (mDevice == VK_NULL_HANDLE) {
         return;
@@ -439,6 +688,10 @@ void VulkanRenderer::destroySwapchainResources() {
         vkDestroyFramebuffer(mDevice, framebuffer, nullptr);
     }
     mFramebuffers.clear();
+    if (mGraphicsPipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(mDevice, mGraphicsPipeline, nullptr);
+        mGraphicsPipeline = VK_NULL_HANDLE;
+    }
     if (mRenderPass != VK_NULL_HANDLE) {
         vkDestroyRenderPass(mDevice, mRenderPass, nullptr);
         mRenderPass = VK_NULL_HANDLE;
@@ -458,6 +711,15 @@ void VulkanRenderer::destroy() {
     if (mDevice != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(mDevice);
         destroySwapchainResources();
+        if (mVertexBuffer != VK_NULL_HANDLE) {
+            vkDestroyBuffer(mDevice, mVertexBuffer, nullptr);
+        }
+        if (mVertexMemory != VK_NULL_HANDLE) {
+            vkFreeMemory(mDevice, mVertexMemory, nullptr);
+        }
+        if (mPipelineLayout != VK_NULL_HANDLE) {
+            vkDestroyPipelineLayout(mDevice, mPipelineLayout, nullptr);
+        }
         if (mCommandPool != VK_NULL_HANDLE) {
             vkDestroyCommandPool(mDevice, mCommandPool, nullptr);
         }
