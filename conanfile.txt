@@ -4,6 +4,10 @@ trompeloeil/49
 sdl/3.4.16
 vulkan-headers/1.4.357.0
 vulkan-loader/1.4.357.0
+imgui/1.93.0
+
+[options]
+imgui/*:with_sdl3_binding=True
 
 [tool_requires]
 glslang/1.4.357.0

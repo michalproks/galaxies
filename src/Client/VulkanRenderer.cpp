@@ -2,8 +2,12 @@
 
 #include "CircleFragmentShader.h"
 #include "CircleVertexShader.h"
+#include "Selection.h"
+#include "Ui.h"
 
 #include <SDL3/SDL_vulkan.h>
+
+#include <imgui_impl_vulkan.h>
 
 #include <algorithm>
 #include <array>
@@ -224,6 +228,9 @@ void VulkanRenderer::createFrameSynchronization() {
 
 void VulkanRenderer::recreateSwapchain() {
     checkVk(vkDeviceWaitIdle(mDevice), "vkDeviceWaitIdle");
+    if (mUi != nullptr) {
+        mUi->shutdownVulkan();
+    }
     destroySwapchainResources();
     createSwapchain();
     createRenderPass();
@@ -231,6 +238,19 @@ void VulkanRenderer::recreateSwapchain() {
     createImageViews();
     createFramebuffers();
     createCommandBuffers();
+    if (mUi == nullptr) {
+        mUi = std::make_unique<Ui>(mWindow,
+                                   mInstance,
+                                   mPhysicalDevice,
+                                   mDevice,
+                                   mQueueFamilyIndex,
+                                   mQueue,
+                                   mRenderPass,
+                                   mExtent,
+                                   static_cast<std::uint32_t>(mImages.size()));
+    } else {
+        mUi->reinitializeVulkan(mRenderPass, mExtent, static_cast<std::uint32_t>(mImages.size()));
+    }
 }
 
 void VulkanRenderer::createSwapchain() {
@@ -526,7 +546,8 @@ void VulkanRenderer::createCommandBuffers() {
 
 void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex,
                                          Server::GameSnapshot const &snapshot,
-                                         std::vector<BodyDraw> const &bodyDraws) const {
+                                         std::vector<BodyDraw> const &bodyDraws,
+                                         ImDrawData *drawData) const {
     VkCommandBuffer const commandBuffer = mCommandBuffers[imageIndex];
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -570,11 +591,16 @@ void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex,
         vkCmdDraw(commandBuffer, bodyDraws[index].vertexCount, 1, bodyDraws[index].firstVertex, 0);
     }
 
+    ImGui_ImplVulkan_RenderDrawData(drawData, commandBuffer);
+
     vkCmdEndRenderPass(commandBuffer);
     checkVk(vkEndCommandBuffer(commandBuffer), "vkEndCommandBuffer");
 }
 
-void VulkanRenderer::renderFrame(Camera const &camera, Server::GameSnapshot const &snapshot, VkExtent2D viewport) {
+void VulkanRenderer::renderFrame(Camera const &camera,
+                                 Server::GameSnapshot const &snapshot,
+                                 VkExtent2D viewport,
+                                 std::optional<std::size_t> selectedBody) {
     if (viewport.width == 0 || viewport.height == 0 || viewport.width != mExtent.width ||
         viewport.height != mExtent.height) {
         throw std::invalid_argument("The render viewport must match the current non-zero swapchain extent.");
@@ -636,8 +662,15 @@ void VulkanRenderer::renderFrame(Camera const &camera, Server::GameSnapshot cons
             std::memcpy(mappedMemory, vertices.data(), static_cast<std::size_t>(vertexDataSize));
             vkUnmapMemory(mDevice, mVertexMemory);
         }
+        mUi->beginFrame();
+        if (selectedBody.has_value() && selectedBody.value() < snapshot.bodies.size()) {
+            Server::BodySnapshot const &body = snapshot.bodies[selectedBody.value()];
+            mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));
+            mUi->drawInfoBox(Ui::displayName(body.kind));
+        }
+        ImDrawData *const drawData = mUi->endFrame();
         checkVk(vkResetCommandBuffer(mCommandBuffers[imageIndex], 0), "vkResetCommandBuffer");
-        recordCommandBuffer(imageIndex, snapshot, bodyDraws);
+        recordCommandBuffer(imageIndex, snapshot, bodyDraws, drawData);
         checkVk(vkResetFences(mDevice, 1, &mInFlightFence), "vkResetFences");
 
         VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -672,6 +705,10 @@ void VulkanRenderer::renderFrame(Camera const &camera, Server::GameSnapshot cons
 
 VkExtent2D VulkanRenderer::viewport() const {
     return mExtent;
+}
+
+bool VulkanRenderer::wantsMouseCapture() const {
+    return mUi != nullptr && mUi->wantsMouseCapture();
 }
 
 void VulkanRenderer::destroySwapchainResources() {
@@ -710,6 +747,7 @@ void VulkanRenderer::destroySwapchainResources() {
 void VulkanRenderer::destroy() {
     if (mDevice != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(mDevice);
+        mUi.reset();
         destroySwapchainResources();
         if (mVertexBuffer != VK_NULL_HANDLE) {
             vkDestroyBuffer(mDevice, mVertexBuffer, nullptr);

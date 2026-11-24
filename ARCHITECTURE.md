@@ -20,5 +20,5 @@ galaxies/
     `-- Simulation  # Representation and evolving of the game state; the game core itself
 ```
 
-`Client` owns the SDL3 window and Vulkan renderer. `Main` provides the Windows GUI entry point,
+`Client` owns the SDL3 window, Vulkan renderer, and the ImGui Vulkan UI backend. `Main` provides the Windows GUI entry point,
 while `Client.Test` contains the client's unit tests.

@@ -65,6 +65,20 @@ Camera::worldToNDC(Simulation::Vector2 worldPosition, std::uint32_t viewportW, s
 }
 
 Simulation::Vector2
+Camera::worldToPixel(Simulation::Vector2 worldPosition, std::uint32_t viewportW, std::uint32_t viewportH) const {
+    if (viewportW == 0 || viewportH == 0) {
+        throw std::invalid_argument("Camera projection requires a non-zero viewport.");
+    }
+    if (!std::isfinite(worldPosition.x) || !std::isfinite(worldPosition.y)) {
+        throw std::invalid_argument("Camera projection requires a finite world position.");
+    }
+    return {
+        static_cast<double>(viewportW) / 2.0 + (worldPosition.x - mCenter.x) * mScale,
+        static_cast<double>(viewportH) / 2.0 - (worldPosition.y - mCenter.y) * mScale,
+    };
+}
+
+Simulation::Vector2
 Camera::screenToWorld(Simulation::Vector2 screenPosition, std::uint32_t viewportW, std::uint32_t viewportH) const {
     if (viewportW == 0 || viewportH == 0) {
         throw std::invalid_argument("Camera unprojection requires a non-zero viewport.");

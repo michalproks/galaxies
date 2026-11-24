@@ -9,9 +9,15 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <vector>
 
+struct ImDrawData;
+
 namespace Client {
+
+class Ui;
 
 /** Requests a swapchain extent constrained by the surface's capabilities. */
 struct SwapchainExtentRequest {
@@ -30,8 +36,14 @@ public:
     VulkanRenderer(VulkanRenderer const &) = delete;
     VulkanRenderer &operator=(VulkanRenderer const &) = delete;
 
-    /** Projects and draws every snapshot body, then presents the frame; viewport must match the swapchain extent. */
-    void renderFrame(Camera const &camera, Server::GameSnapshot const &snapshot, VkExtent2D viewport);
+    /** Projects and draws every body plus optional selection UI, then presents; viewport must match the swapchain. */
+    void renderFrame(Camera const &camera,
+                     Server::GameSnapshot const &snapshot,
+                     VkExtent2D viewport,
+                     std::optional<std::size_t> selectedBody);
+
+    /** Returns whether the previous ImGui frame requested mouse input capture. */
+    [[nodiscard]] bool wantsMouseCapture() const;
 
     /** Returns the current drawable swapchain dimensions in pixels. */
     [[nodiscard]] VkExtent2D viewport() const;
@@ -65,7 +77,8 @@ private:
     void createCommandBuffers();
     void recordCommandBuffer(std::size_t imageIndex,
                              Server::GameSnapshot const &snapshot,
-                             std::vector<BodyDraw> const &bodyDraws) const;
+                             std::vector<BodyDraw> const &bodyDraws,
+                             ImDrawData *drawData) const;
     void destroySwapchainResources();
     void destroy();
 
@@ -93,6 +106,7 @@ private:
     VkSemaphore mImageAvailableSemaphore{};
     VkSemaphore mRenderFinishedSemaphore{};
     VkFence mInFlightFence{};
+    std::unique_ptr<Ui> mUi;
 };
 
 } // namespace Client

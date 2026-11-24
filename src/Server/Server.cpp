@@ -26,7 +26,7 @@ GameSnapshot Server::snapshot(double simulationTime) const {
     for (std::size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
         Simulation::Body const &body = bodies[bodyIndex];
         result.bodies.push_back(
-            {Simulation::worldPosition(bodies, bodyIndex, simulationTime), body.radius, body.color});
+            {Simulation::worldPosition(bodies, bodyIndex, simulationTime), body.radius, body.color, body.kind});
     }
     return result;
 }
