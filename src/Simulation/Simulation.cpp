@@ -9,13 +9,14 @@ namespace Simulation {
 
 PlanetarySystem::PlanetarySystem()
     : mBodies{{
-          {1.0, {1.0F, 1.0F, 0.0F}, 0.0, 0.0, -1, BodyKind::STAR},
-          {0.25, {0.0F, 0.0F, 1.0F}, 4.0, 30.0, 0, BodyKind::PLANET},
-          {0.1, {0.8F, 0.8F, 0.8F}, 1.0, 10.0, 1, BodyKind::MOON},
+          {1.0, {1.0F, 1.0F, 0.0F}, 0.0, 0.0, -1, BodyKind::STAR, "Sol"},
+          {0.25, {0.0F, 0.0F, 1.0F}, 4.0, 30.0, 0, BodyKind::PLANET, "Earth"},
+          {0.1, {0.8F, 0.8F, 0.8F}, 1.0, 10.0, 1, BodyKind::MOON, "Luna"},
+          {0.2, {1.0F, 0.0F, 0.0F}, 6.0, 40.0, 0, BodyKind::PLANET, "Mars"},
       }} {
 }
 
-std::array<Body, 3> const &PlanetarySystem::bodies() const {
+std::array<Body, 4> const &PlanetarySystem::bodies() const {
     return mBodies;
 }
 

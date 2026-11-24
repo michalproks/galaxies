@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 
 namespace Simulation {
 
@@ -35,6 +36,7 @@ struct Body {
     double orbitPeriod{}; /**< Orbit duration in seconds; positive for orbiting bodies. */
     int parent{-1};       /**< Index into the body list, or -1 for a root body. */
     BodyKind kind{BodyKind::STAR};
+    std::string name; /**< Display name of the body, e.g. "Sol". */
 };
 
 class PlanetarySystem {
@@ -42,11 +44,11 @@ public:
     /** Creates the fixed star, planet, and moon system. */
     PlanetarySystem();
 
-    /** Returns the fixed star, planet, and moon configuration in parent-before-child order. */
-    [[nodiscard]] std::array<Body, 3> const &bodies() const;
+    /** Returns the fixed Sol star, Earth and Mars planets, and Luna moon in parent-before-child order. */
+    [[nodiscard]] std::array<Body, 4> const &bodies() const;
 
 private:
-    std::array<Body, 3> mBodies;
+    std::array<Body, 4> mBodies;
 };
 
 /** Returns a body's deterministic world position at simulation time in seconds.

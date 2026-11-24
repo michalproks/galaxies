@@ -21,12 +21,15 @@ Server::Server() = default;
 GameSnapshot Server::snapshot(double simulationTime) const {
     GameSnapshot result;
     result.time = simulationTime;
-    std::array<Simulation::Body, 3> const &bodies = mPlanetarySystem.bodies();
+    std::array<Simulation::Body, 4> const &bodies = mPlanetarySystem.bodies();
     result.bodies.reserve(bodies.size());
     for (std::size_t bodyIndex = 0; bodyIndex < bodies.size(); ++bodyIndex) {
         Simulation::Body const &body = bodies[bodyIndex];
-        result.bodies.push_back(
-            {Simulation::worldPosition(bodies, bodyIndex, simulationTime), body.radius, body.color, body.kind});
+        result.bodies.push_back({Simulation::worldPosition(bodies, bodyIndex, simulationTime),
+                                 body.radius,
+                                 body.color,
+                                 body.kind,
+                                 body.name});
     }
     return result;
 }

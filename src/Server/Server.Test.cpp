@@ -11,11 +11,16 @@ TEST_CASE("A server snapshot contains the planetary system at the requested time
     Server::GameSnapshot const snapshot = server.snapshot(7.5);
 
     REQUIRE(snapshot.time == Catch::Approx(7.5));
-    REQUIRE(snapshot.bodies.size() == 3);
+    REQUIRE(snapshot.bodies.size() == 4);
 
     CHECK(snapshot.bodies[0].kind == Simulation::BodyKind::STAR);
     CHECK(snapshot.bodies[1].kind == Simulation::BodyKind::PLANET);
     CHECK(snapshot.bodies[2].kind == Simulation::BodyKind::MOON);
+    CHECK(snapshot.bodies[3].kind == Simulation::BodyKind::PLANET);
+    CHECK(snapshot.bodies[0].name == "Sol");
+    CHECK(snapshot.bodies[1].name == "Earth");
+    CHECK(snapshot.bodies[2].name == "Luna");
+    CHECK(snapshot.bodies[3].name == "Mars");
 
     CHECK(snapshot.bodies[0].radius == Catch::Approx(1.0));
     CHECK(snapshot.bodies[0].color.red == Catch::Approx(1.0F));
@@ -33,6 +38,14 @@ TEST_CASE("A server snapshot contains the planetary system at the requested time
     CHECK(snapshot.bodies[2].color.red == Catch::Approx(0.8F));
     CHECK(snapshot.bodies[2].position.x == Catch::Approx(0.0).margin(1.0e-12));
     CHECK(snapshot.bodies[2].position.y == Catch::Approx(3.0));
+
+    CHECK(snapshot.bodies[3].radius == Catch::Approx(0.2));
+    CHECK(snapshot.bodies[3].color.red == Catch::Approx(1.0F));
+    CHECK(snapshot.bodies[3].color.green == Catch::Approx(0.0F));
+    CHECK(snapshot.bodies[3].color.blue == Catch::Approx(0.0F));
+    double const marsAngle = 2.0 * std::numbers::pi * snapshot.time / 40.0;
+    CHECK(snapshot.bodies[3].position.x == Catch::Approx(6.0 * std::cos(marsAngle)));
+    CHECK(snapshot.bodies[3].position.y == Catch::Approx(6.0 * std::sin(marsAngle)));
 
     Simulation::PlanetarySystem const system;
     for (std::size_t bodyIndex = 0; bodyIndex < system.bodies().size(); ++bodyIndex) {
