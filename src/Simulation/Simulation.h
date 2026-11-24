@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 namespace Simulation {
@@ -20,12 +21,20 @@ struct Color {
     float blue{};
 };
 
+/** Identifies the visual category of a simulated celestial body. */
+enum class BodyKind : std::uint8_t {
+    STAR,
+    PLANET,
+    MOON,
+};
+
 struct Body {
     double radius{};      /**< Physical radius in world units. */
     Color color;          /**< Render color assigned by the authoritative simulation. */
     double orbitRadius{}; /**< Distance from the parent in world units. */
     double orbitPeriod{}; /**< Orbit duration in seconds; positive for orbiting bodies. */
     int parent{-1};       /**< Index into the body list, or -1 for a root body. */
+    BodyKind kind{BodyKind::STAR};
 };
 
 class PlanetarySystem {

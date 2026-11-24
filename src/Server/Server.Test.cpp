@@ -13,6 +13,10 @@ TEST_CASE("A server snapshot contains the planetary system at the requested time
     REQUIRE(snapshot.time == Catch::Approx(7.5));
     REQUIRE(snapshot.bodies.size() == 3);
 
+    CHECK(snapshot.bodies[0].kind == Simulation::BodyKind::STAR);
+    CHECK(snapshot.bodies[1].kind == Simulation::BodyKind::PLANET);
+    CHECK(snapshot.bodies[2].kind == Simulation::BodyKind::MOON);
+
     CHECK(snapshot.bodies[0].radius == Catch::Approx(1.0));
     CHECK(snapshot.bodies[0].color.red == Catch::Approx(1.0F));
     CHECK(snapshot.bodies[0].color.green == Catch::Approx(1.0F));

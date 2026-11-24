@@ -9,9 +9,9 @@ namespace Simulation {
 
 PlanetarySystem::PlanetarySystem()
     : mBodies{{
-          {1.0, {1.0F, 1.0F, 0.0F}, 0.0, 0.0, -1},
-          {0.25, {0.0F, 0.0F, 1.0F}, 4.0, 30.0, 0},
-          {0.1, {0.8F, 0.8F, 0.8F}, 1.0, 10.0, 1},
+          {1.0, {1.0F, 1.0F, 0.0F}, 0.0, 0.0, -1, BodyKind::STAR},
+          {0.25, {0.0F, 0.0F, 1.0F}, 4.0, 30.0, 0, BodyKind::PLANET},
+          {0.1, {0.8F, 0.8F, 0.8F}, 1.0, 10.0, 1, BodyKind::MOON},
       }} {
 }
 

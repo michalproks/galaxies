@@ -7,6 +7,10 @@ TEST_CASE("The planetary system has the specified world positions") {
     Simulation::PlanetarySystem const system;
     auto const bodies = system.bodies();
 
+    CHECK(bodies[0].kind == Simulation::BodyKind::STAR);
+    CHECK(bodies[1].kind == Simulation::BodyKind::PLANET);
+    CHECK(bodies[2].kind == Simulation::BodyKind::MOON);
+
     SECTION("at time zero") {
         CHECK(Simulation::worldPosition(bodies, 0, 0.0).x == Catch::Approx(0.0));
         CHECK(Simulation::worldPosition(bodies, 0, 0.0).y == Catch::Approx(0.0));

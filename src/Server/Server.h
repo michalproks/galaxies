@@ -13,6 +13,7 @@ struct BodySnapshot {
     Simulation::Vector2 position;
     double radius{};
     Simulation::Color color;
+    Simulation::BodyKind kind{Simulation::BodyKind::STAR};
 };
 
 struct GameSnapshot {

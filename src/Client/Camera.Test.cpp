@@ -47,3 +47,15 @@ TEST_CASE("Zooming at a world point keeps it fixed at the cursor") {
     CHECK(cursorAfterZoom.y == Catch::Approx(2.0 / 3.0));
     CHECK(camera.scale() == Catch::Approx(88.0));
 }
+
+TEST_CASE("World-to-pixel projection uses a top-left origin and inverts screen-to-world") {
+    Client::Camera const camera({2.0, -3.0}, 100.0);
+
+    Simulation::Vector2 const pixel = camera.worldToPixel({3.0, -2.0}, 800, 600);
+    CHECK(pixel.x == Catch::Approx(500.0));
+    CHECK(pixel.y == Catch::Approx(200.0));
+
+    Simulation::Vector2 const world = camera.screenToWorld(pixel, 800, 600);
+    CHECK(world.x == Catch::Approx(3.0));
+    CHECK(world.y == Catch::Approx(-2.0));
+}

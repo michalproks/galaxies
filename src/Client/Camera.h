@@ -39,6 +39,11 @@ public:
     [[nodiscard]] Simulation::Vector2
     worldToNDC(Simulation::Vector2 worldPosition, std::uint32_t viewportW, std::uint32_t viewportH) const;
 
+    /** Returns the top-left-origin pixel position of a finite world position; viewport dimensions must be non-zero.
+     */
+    [[nodiscard]] Simulation::Vector2
+    worldToPixel(Simulation::Vector2 worldPosition, std::uint32_t viewportW, std::uint32_t viewportH) const;
+
     /** Returns the world point under a finite top-left-origin pixel position; viewport dimensions must be non-zero. */
     [[nodiscard]] Simulation::Vector2
     screenToWorld(Simulation::Vector2 screenPosition, std::uint32_t viewportW, std::uint32_t viewportH) const;

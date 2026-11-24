@@ -53,6 +53,9 @@ public:
     /** Applies pending client-side camera commands and clears the command list. */
     void updateCamera();
 
+    /** Returns and clears the pixel positions recorded from left-button presses. */
+    [[nodiscard]] std::vector<Simulation::Vector2> consumeLeftClicks();
+
     /** Returns the window-owned camera. */
     [[nodiscard]] Camera const &camera() const;
 
@@ -67,6 +70,7 @@ private:
     SDL_Window *mWindow{};
     Camera mCamera;
     std::vector<CameraCommand> mCameraCommands;
+    std::vector<Simulation::Vector2> mLeftClicks;
     Simulation::Vector2 mDragAnchorWorld{};
     Simulation::Vector2 mDragCursor{};
     bool mMiddleButtonDown{};

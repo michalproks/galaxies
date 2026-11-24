@@ -56,6 +56,7 @@ include(CTest)
 find_package(SDL3 CONFIG REQUIRED)
 find_package(VulkanHeaders CONFIG REQUIRED)
 find_package(VulkanLoader CONFIG REQUIRED)
+find_package(imgui CONFIG REQUIRED)
 
 if(BUILD_TESTING)
     find_package(Catch2 3.16.1 CONFIG REQUIRED)

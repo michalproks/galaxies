@@ -1,11 +1,13 @@
 #include "GameWindow.h"
 
 #include <SDL3/SDL_vulkan.h>
+#include <imgui_impl_sdl3.h>
 
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace Client {
 namespace {
@@ -64,6 +66,7 @@ bool GameWindow::processEvents(double frameSeconds) {
     mCameraCommands.clear();
     SDL_Event event{};
     while (SDL_PollEvent(&event)) {
+        ImGui_ImplSDL3_ProcessEvent(&event);
         if (event.type == SDL_EVENT_QUIT) {
             mCameraCommands.clear();
             return false;
@@ -106,6 +109,11 @@ bool GameWindow::processEvents(double frameSeconds) {
                 mCameraCommands.push_back({CameraCommandType::MIDDLE_DRAG_END});
                 mMiddleButtonDown = false;
             }
+        }
+
+        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == SDL_GetWindowID(mWindow) &&
+            event.button.button == SDL_BUTTON_LEFT) {
+            mLeftClicks.push_back(toPixelPosition(event.button.x, event.button.y));
         }
 
         if (event.type == SDL_EVENT_MOUSE_MOTION && event.motion.windowID == SDL_GetWindowID(mWindow) &&
@@ -178,6 +186,12 @@ void GameWindow::updateCamera() {
         }
     }
     mCameraCommands.clear();
+}
+
+std::vector<Simulation::Vector2> GameWindow::consumeLeftClicks() {
+    std::vector<Simulation::Vector2> clicks = std::move(mLeftClicks);
+    mLeftClicks.clear();
+    return clicks;
 }
 
 Camera const &GameWindow::camera() const {
