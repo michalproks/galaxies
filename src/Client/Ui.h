@@ -53,9 +53,6 @@ public:
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
 
-    /** Returns the title for the specified simulation body kind. */
-    [[nodiscard]] static std::string_view displayName(Simulation::BodyKind kind);
-
 private:
     void initializeVulkan(VkRenderPass renderPass, std::uint32_t imageCount);
     void createDescriptorPool(std::uint32_t imageCount);

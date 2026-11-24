@@ -169,16 +169,4 @@ bool Ui::wantsMouseCapture() const {
     return ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse;
 }
 
-std::string_view Ui::displayName(Simulation::BodyKind kind) {
-    switch (kind) {
-    case Simulation::BodyKind::STAR:
-        return "Star";
-    case Simulation::BodyKind::PLANET:
-        return "Planet";
-    case Simulation::BodyKind::MOON:
-        return "Moon";
-    }
-    throw std::invalid_argument("Unknown simulation body kind.");
-}
-
 } // namespace Client

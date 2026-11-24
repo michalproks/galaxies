@@ -666,7 +666,7 @@ void VulkanRenderer::renderFrame(Camera const &camera,
         if (selectedBody.has_value() && selectedBody.value() < snapshot.bodies.size()) {
             Server::BodySnapshot const &body = snapshot.bodies[selectedBody.value()];
             mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));
-            mUi->drawInfoBox(Ui::displayName(body.kind));
+            mUi->drawInfoBox(body.name);
         }
         ImDrawData *const drawData = mUi->endFrame();
         checkVk(vkResetCommandBuffer(mCommandBuffers[imageIndex], 0), "vkResetCommandBuffer");

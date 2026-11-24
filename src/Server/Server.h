@@ -4,6 +4,7 @@
 #include "Simulation.h"
 
 #include <chrono>
+#include <string>
 #include <vector>
 
 namespace Server {
@@ -14,6 +15,7 @@ struct BodySnapshot {
     double radius{};
     Simulation::Color color;
     Simulation::BodyKind kind{Simulation::BodyKind::STAR};
+    std::string name; /**< Display name of the body. */
 };
 
 struct GameSnapshot {
