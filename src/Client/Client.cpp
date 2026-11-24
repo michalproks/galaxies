@@ -28,6 +28,9 @@ int runGame() {
         }
         std::vector<Simulation::Vector2> const clicks = window.consumeLeftClicks();
         window.updateCamera();
+        if (std::optional<Simulation::GameSpeed> const speed = window.consumeSpeedChange(); speed.has_value()) {
+            server.setSpeed(speed.value());
+        }
         Server::GameSnapshot const snapshot = server.snapshot(now);
         for (Simulation::Vector2 const click : clicks) {
             bool const capture = renderer.wantsMouseCapture();

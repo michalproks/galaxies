@@ -77,12 +77,17 @@ bool GameWindow::processEvents(double frameSeconds) {
             return false;
         }
 
-        if ((event.type == SDL_EVENT_KEY_DOWN || event.type == SDL_EVENT_KEY_UP) &&
-            event.key.windowID == SDL_GetWindowID(mWindow) && event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+        if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == SDL_GetWindowID(mWindow) && !event.key.repeat) {
             if (event.key.key == SDLK_Z) {
                 mCameraCommands.push_back({CameraCommandType::ZOOM_IN});
             } else if (event.key.key == SDLK_X) {
                 mCameraCommands.push_back({CameraCommandType::ZOOM_OUT});
+            } else if (event.key.key == SDLK_1) {
+                mPendingSpeed = Simulation::GameSpeed::NORMAL;
+            } else if (event.key.key == SDLK_2) {
+                mPendingSpeed = Simulation::GameSpeed::FAST;
+            } else if (event.key.key == SDLK_3) {
+                mPendingSpeed = Simulation::GameSpeed::ULTRA;
             }
         }
 
@@ -192,6 +197,12 @@ std::vector<Simulation::Vector2> GameWindow::consumeLeftClicks() {
     std::vector<Simulation::Vector2> clicks = std::move(mLeftClicks);
     mLeftClicks.clear();
     return clicks;
+}
+
+std::optional<Simulation::GameSpeed> GameWindow::consumeSpeedChange() {
+    std::optional<Simulation::GameSpeed> speed = mPendingSpeed;
+    mPendingSpeed.reset();
+    return speed;
 }
 
 Camera const &GameWindow::camera() const {

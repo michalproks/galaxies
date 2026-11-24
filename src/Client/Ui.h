@@ -50,6 +50,9 @@ public:
     /** Draws a standard ImGui window with the supplied object name as its title. */
     void drawInfoBox(std::string_view name);
 
+    /** Draws the fixed top-right game date-time and speed display. */
+    void drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed);
+
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
 

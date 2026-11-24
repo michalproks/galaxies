@@ -663,6 +663,7 @@ void VulkanRenderer::renderFrame(Camera const &camera,
             vkUnmapMemory(mDevice, mVertexMemory);
         }
         mUi->beginFrame();
+        mUi->drawGameTimeBox(Simulation::dateTimeFromGameHours(snapshot.gameHours), snapshot.speed);
         if (selectedBody.has_value() && selectedBody.value() < snapshot.bodies.size()) {
             Server::BodySnapshot const &body = snapshot.bodies[selectedBody.value()];
             mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));

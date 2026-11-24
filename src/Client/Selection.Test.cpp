@@ -8,6 +8,7 @@
 TEST_CASE("Hit testing selects each body and misses empty space") {
     Client::Camera const camera({}, 100.0);
     Server::GameSnapshot const snapshot{0.0,
+                                        Simulation::GameSpeed::NORMAL,
                                         {{{-2.0, 0.0}, 1.0, {}, Simulation::BodyKind::STAR, "Sol"},
                                          {{0.0, 0.0}, 0.25, {}, Simulation::BodyKind::PLANET, "Earth"},
                                          {{2.0, 0.0}, 0.1, {}, Simulation::BodyKind::MOON, "Luna"}}};
@@ -21,6 +22,7 @@ TEST_CASE("Hit testing selects each body and misses empty space") {
 TEST_CASE("Hit testing chooses the last body drawn when bodies overlap") {
     Client::Camera const camera({}, 100.0);
     Server::GameSnapshot const snapshot{0.0,
+                                        Simulation::GameSpeed::NORMAL,
                                         {{{0.0, 0.0}, 1.0, {}, Simulation::BodyKind::PLANET, "Earth"},
                                          {{0.0, 0.0}, 0.1, {}, Simulation::BodyKind::MOON, "Luna"}}};
 
