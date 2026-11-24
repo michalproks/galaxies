@@ -18,6 +18,7 @@ int runGame() {
     Server::Server server;
     std::optional<std::size_t> selectedBody;
     auto previousFrameTime = std::chrono::steady_clock::now();
+    Simulation::GameSpeed lastNonPausedSpeed{Simulation::GameSpeed::NORMAL};
 
     for (;;) {
         auto const now = std::chrono::steady_clock::now();
@@ -30,6 +31,15 @@ int runGame() {
         window.updateCamera();
         if (std::optional<Simulation::GameSpeed> const speed = window.consumeSpeedChange(); speed.has_value()) {
             server.setSpeed(speed.value());
+            lastNonPausedSpeed = speed.value();
+        }
+        if (window.consumePauseToggle()) {
+            if (server.speed() == Simulation::GameSpeed::PAUSED) {
+                server.setSpeed(lastNonPausedSpeed);
+            } else {
+                lastNonPausedSpeed = server.speed();
+                server.setSpeed(Simulation::GameSpeed::PAUSED);
+            }
         }
         Server::GameSnapshot const snapshot = server.snapshot(now);
         for (Simulation::Vector2 const click : clicks) {

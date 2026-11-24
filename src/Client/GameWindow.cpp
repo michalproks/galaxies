@@ -88,6 +88,8 @@ bool GameWindow::processEvents(double frameSeconds) {
                 mPendingSpeed = Simulation::GameSpeed::FAST;
             } else if (event.key.key == SDLK_3) {
                 mPendingSpeed = Simulation::GameSpeed::ULTRA;
+            } else if (event.key.key == SDLK_SPACE) {
+                mPendingPauseToggle = true;
             }
         }
 
@@ -203,6 +205,12 @@ std::optional<Simulation::GameSpeed> GameWindow::consumeSpeedChange() {
     std::optional<Simulation::GameSpeed> speed = mPendingSpeed;
     mPendingSpeed.reset();
     return speed;
+}
+
+bool GameWindow::consumePauseToggle() {
+    bool const toggle = mPendingPauseToggle;
+    mPendingPauseToggle = false;
+    return toggle;
 }
 
 Camera const &GameWindow::camera() const {

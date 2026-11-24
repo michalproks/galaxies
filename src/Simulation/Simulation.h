@@ -34,6 +34,7 @@ enum class GameSpeed : std::uint8_t {
     NORMAL,
     FAST,
     ULTRA,
+    PAUSED,
 };
 
 /** A calendar date and whole-hour time in the game's fixed 364-day calendar. */

@@ -26,6 +26,8 @@ namespace {
             return "FAST";
         case Simulation::GameSpeed::ULTRA:
             return "ULTRA";
+        case Simulation::GameSpeed::PAUSED:
+            return "PAUSED";
         }
         return "NORMAL";
     }

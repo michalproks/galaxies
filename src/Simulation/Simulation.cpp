@@ -27,6 +27,8 @@ double daysPerSecond(GameSpeed speed) {
         return 2.0;
     case GameSpeed::ULTRA:
         return 4.0;
+    case GameSpeed::PAUSED:
+        return 0.0;
     }
     throw std::invalid_argument("The game speed is not recognized.");
 }

@@ -60,6 +60,9 @@ public:
     /** Returns and clears the pending speed selected by a non-repeating 1, 2, or 3 key press. */
     [[nodiscard]] std::optional<Simulation::GameSpeed> consumeSpeedChange();
 
+    /** Returns and clears the pending pause toggle requested by a non-repeating Space key press. */
+    [[nodiscard]] bool consumePauseToggle();
+
     /** Returns the window-owned camera. */
     [[nodiscard]] Camera const &camera() const;
 
@@ -76,6 +79,7 @@ private:
     std::vector<CameraCommand> mCameraCommands;
     std::vector<Simulation::Vector2> mLeftClicks;
     std::optional<Simulation::GameSpeed> mPendingSpeed;
+    bool mPendingPauseToggle{};
     Simulation::Vector2 mDragAnchorWorld{};
     Simulation::Vector2 mDragCursor{};
     bool mMiddleButtonDown{};

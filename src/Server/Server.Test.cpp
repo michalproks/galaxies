@@ -66,4 +66,14 @@ TEST_CASE("Server snapshots integrate wall-clock time at the current speed") {
     Server::GameSnapshot const ultra = server.snapshot(start + std::chrono::seconds(4));
     CHECK(ultra.gameHours == Catch::Approx(192.0));
     CHECK(ultra.speed == Simulation::GameSpeed::ULTRA);
+
+    server.setSpeed(Simulation::GameSpeed::PAUSED);
+    CHECK(server.speed() == Simulation::GameSpeed::PAUSED);
+    Server::GameSnapshot const paused = server.snapshot(start + std::chrono::seconds(10));
+    CHECK(paused.gameHours == Catch::Approx(192.0));
+    CHECK(paused.speed == Simulation::GameSpeed::PAUSED);
+
+    server.setSpeed(Simulation::GameSpeed::NORMAL);
+    Server::GameSnapshot const resumed = server.snapshot(start + std::chrono::seconds(12));
+    CHECK(resumed.gameHours == Catch::Approx(240.0));
 }

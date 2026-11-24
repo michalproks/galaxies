@@ -12,6 +12,7 @@ TEST_CASE("Game speed maps to in-game days per second") {
     CHECK(Simulation::daysPerSecond(Simulation::GameSpeed::NORMAL) == Catch::Approx(1.0));
     CHECK(Simulation::daysPerSecond(Simulation::GameSpeed::FAST) == Catch::Approx(2.0));
     CHECK(Simulation::daysPerSecond(Simulation::GameSpeed::ULTRA) == Catch::Approx(4.0));
+    CHECK(Simulation::daysPerSecond(Simulation::GameSpeed::PAUSED) == Catch::Approx(0.0));
 }
 
 TEST_CASE("Game hours convert to the fixed game calendar") {
