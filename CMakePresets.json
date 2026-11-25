@@ -22,6 +22,11 @@
       "name": "windows-msvc-debug",
       "configurePreset": "windows-msvc",
       "configuration": "Debug"
+    },
+    {
+      "name": "windows-msvc-release",
+      "configurePreset": "windows-msvc",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
