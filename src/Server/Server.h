@@ -18,46 +18,43 @@ struct BodySnapshot {
     std::string name; /**< Display name of the body. */
 };
 
+/** Render-ready game time, speed, and body state for a single frame. */
 struct GameSnapshot {
-    double time{}; /**< Authoritative simulation time in seconds. */
+    double gameHours{}; /**< Authoritative in-game hours since the calendar epoch. */
+    Simulation::GameSpeed speed{Simulation::GameSpeed::NORMAL}; /**< Current game speed. */
     std::vector<BodySnapshot> bodies;
-};
-
-class GameClock {
-public:
-    using Clock = std::chrono::steady_clock;
-    using TimePoint = Clock::time_point;
-
-    /** Starts a clock at the current steady-clock time. */
-    GameClock();
-
-    /** Starts a clock at a supplied steady-clock timestamp. */
-    explicit GameClock(TimePoint startTime);
-
-    /** Maps a steady-clock timestamp to elapsed simulation seconds since this clock's start. */
-    [[nodiscard]] double timeAt(TimePoint now) const;
-
-private:
-    TimePoint mStartTime;
 };
 
 class Server {
 public:
+    using Clock = std::chrono::steady_clock;
+    using TimePoint = Clock::time_point;
+
     /** Creates the authoritative planetary system and starts its game clock. */
     Server();
 
-    /** Builds a render-ready snapshot for a finite explicit simulation time, in seconds. */
-    [[nodiscard]] GameSnapshot snapshot(double simulationTime) const;
+    /** Builds a render-ready snapshot for a finite explicit game time, in hours since the epoch.
+     * Throws std::invalid_argument if gameHours is not finite.
+     */
+    [[nodiscard]] GameSnapshot snapshot(double gameHours) const;
 
-    /** Advances the owned game clock to the supplied steady-clock time and returns its snapshot. */
-    [[nodiscard]] GameSnapshot snapshot(GameClock::TimePoint now) const;
+    /** Accumulates game hours since the prior tick using the current speed and returns a snapshot. */
+    [[nodiscard]] GameSnapshot snapshot(TimePoint now);
 
-    /** Returns a snapshot at the current steady-clock time. */
-    [[nodiscard]] GameSnapshot snapshot() const;
+    /** Advances to the current steady-clock time and returns a snapshot. */
+    [[nodiscard]] GameSnapshot snapshot();
+
+    /** Sets the speed used to advance game time on subsequent snapshot ticks. */
+    void setSpeed(Simulation::GameSpeed speed);
+
+    /** Returns the current game speed. */
+    [[nodiscard]] Simulation::GameSpeed speed() const;
 
 private:
     Simulation::PlanetarySystem mPlanetarySystem;
-    GameClock mClock;
+    double mGameHours{};
+    Simulation::GameSpeed mSpeed{Simulation::GameSpeed::NORMAL};
+    TimePoint mLastTick;
 };
 
 } // namespace Server

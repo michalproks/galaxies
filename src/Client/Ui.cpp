@@ -13,8 +13,24 @@ namespace {
 
     constexpr float INFO_WINDOW_WIDTH = 220.0F;
     constexpr float INFO_WINDOW_HEIGHT = 60.0F;
+    constexpr float GAME_TIME_WINDOW_WIDTH = 220.0F;
+    constexpr float GAME_TIME_WINDOW_HEIGHT = 48.0F;
     constexpr float WINDOW_PADDING = 8.0F;
     constexpr float SELECTION_LINE_THICKNESS = 2.0F;
+
+    std::string_view speedName(Simulation::GameSpeed speed) {
+        switch (speed) {
+        case Simulation::GameSpeed::NORMAL:
+            return "NORMAL";
+        case Simulation::GameSpeed::FAST:
+            return "FAST";
+        case Simulation::GameSpeed::ULTRA:
+            return "ULTRA";
+        case Simulation::GameSpeed::PAUSED:
+            return "PAUSED";
+        }
+        return "NORMAL";
+    }
 
 } // namespace
 
@@ -162,6 +178,22 @@ void Ui::drawInfoBox(std::string_view name) {
     ImGui::SetNextWindowSize({INFO_WINDOW_WIDTH, INFO_WINDOW_HEIGHT}, ImGuiCond_Always);
     std::string const title(name);
     ImGui::Begin(title.c_str());
+    ImGui::End();
+}
+
+void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed) {
+    ImGuiIO const &io = ImGui::GetIO();
+    ImGui::SetNextWindowPos({io.DisplaySize.x - GAME_TIME_WINDOW_WIDTH - WINDOW_PADDING, WINDOW_PADDING},
+                            ImGuiCond_Always);
+    ImGui::SetNextWindowSize({GAME_TIME_WINDOW_WIDTH, GAME_TIME_WINDOW_HEIGHT}, ImGuiCond_Always);
+    constexpr ImGuiWindowFlags FLAGS = static_cast<ImGuiWindowFlags>(
+        static_cast<unsigned>(ImGuiWindowFlags_NoTitleBar) | static_cast<unsigned>(ImGuiWindowFlags_NoResize) |
+        static_cast<unsigned>(ImGuiWindowFlags_NoMove));
+    ImGui::Begin("##GameTimeBox", nullptr, FLAGS);
+    std::string const dateText = Simulation::format(dateTime);
+    ImGui::TextUnformatted(dateText.c_str());
+    std::string const speedText = std::string("Speed: ") + std::string(speedName(speed));
+    ImGui::TextUnformatted(speedText.c_str());
     ImGui::End();
 }
 
