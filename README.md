@@ -30,6 +30,12 @@ cmake --build --preset windows-msvc-debug
 ctest --preset windows-msvc-debug
 ```
 
+To configure, build the Release configuration, and launch the game in one step (safe to re-run):
+
+```powershell
+.\scripts\run-release.ps1
+```
+
 The application and CTest smoke test use the repository root as their working directory.
 The GUI application opens a 1280x800 window. WASD pans the view, Z/X zooms in/out, the mouse
 wheel zooms around the cursor, and middle-drag pans the view.
