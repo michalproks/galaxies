@@ -12,7 +12,7 @@
 namespace Simulation::Economy {
 
 /** Complete serializable colony economy state consumed and produced by a pure future tick. */
-struct ColonyEconomy {
+struct ColonyEconomy { // NOLINT(bugprone-exception-escape)
     /** Stable colony identity used to derive its deterministic random stream. */
     ColonyId id{};
     /** First settled economic turn is one; turn zero exists only for fictional seed prices. */
