@@ -1,12 +1,14 @@
 #ifndef GALAXIES_CLIENT_UI_H
 #define GALAXIES_CLIENT_UI_H
 
+#include "EconomyUi.h"
 #include "Selection.h"
 
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 struct ImDrawData;
@@ -50,11 +52,19 @@ public:
     /** Draws a standard ImGui window with the supplied object name as its title. */
     void drawInfoBox(std::string_view name);
 
+    /** Draws the info box and colony economy summary/modal for a selected body. */
+    void drawEconomyInfoBox(std::string_view name,
+                            std::optional<Simulation::Economy::ColonyId> colonyId,
+                            Client const &client);
+
     /** Draws the fixed top-right game date-time and speed display. */
     void drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed);
 
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
+
+    /** Returns whether the economy modal blocks map camera input. */
+    [[nodiscard]] bool blocksMapInput() const noexcept;
 
 private:
     void initializeVulkan(VkRenderPass renderPass, std::uint32_t imageCount);
@@ -69,6 +79,7 @@ private:
     VkExtent2D mViewport{};
     bool mSdlBackendInitialized{};
     bool mVulkanBackendInitialized{};
+    EconomyUi mEconomyUi;
 };
 
 } // namespace Client

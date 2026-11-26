@@ -47,9 +47,10 @@ public:
     [[nodiscard]] SDL_Window *nativeWindow() const;
 
     /** Pumps SDL events, records camera commands, and adds a frame-time-scaled WASD pan.
-     * The elapsed frame time must be non-negative and finite. Returns false after a quit or close event.
+     * The elapsed frame time must be non-negative and finite. Map input is ignored while blocked.
+     * Returns false after a quit or close event.
      */
-    [[nodiscard]] bool processEvents(double frameSeconds);
+    [[nodiscard]] bool processEvents(double frameSeconds, bool blockMapInput = false);
 
     /** Applies pending client-side camera commands and clears the command list. */
     void updateCamera();

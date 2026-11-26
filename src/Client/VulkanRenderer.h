@@ -18,6 +18,7 @@ struct ImDrawData;
 namespace Client {
 
 class Ui;
+class Client;
 
 /** Requests a swapchain extent constrained by the surface's capabilities. */
 struct SwapchainExtentRequest {
@@ -40,10 +41,14 @@ public:
     void renderFrame(Camera const &camera,
                      Server::GameSnapshot const &snapshot,
                      VkExtent2D viewport,
-                     std::optional<std::size_t> selectedBody);
+                     std::optional<std::size_t> selectedBody,
+                     Client const &client);
 
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
+
+    /** Returns whether the economy modal blocks map camera input. */
+    [[nodiscard]] bool blocksMapInput() const;
 
     /** Returns the current drawable swapchain dimensions in pixels. */
     [[nodiscard]] VkExtent2D viewport() const;

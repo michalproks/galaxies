@@ -181,6 +181,16 @@ void Ui::drawInfoBox(std::string_view name) {
     ImGui::End();
 }
 
+void Ui::drawEconomyInfoBox(std::string_view const name,
+                            std::optional<Simulation::Economy::ColonyId> const colonyId,
+                            Client const &client) {
+    if (colonyId.has_value()) {
+        mEconomyUi.draw(name, colonyId, client);
+    } else {
+        drawInfoBox(name);
+    }
+}
+
 void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed) {
     ImGuiIO const &io = ImGui::GetIO();
     ImGui::SetNextWindowPos({io.DisplaySize.x - GAME_TIME_WINDOW_WIDTH - WINDOW_PADDING, WINDOW_PADDING},
@@ -199,6 +209,10 @@ void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameS
 
 bool Ui::wantsMouseCapture() const {
     return ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse;
+}
+
+bool Ui::blocksMapInput() const noexcept {
+    return mEconomyUi.modalOpen();
 }
 
 } // namespace Client

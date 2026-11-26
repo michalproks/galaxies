@@ -58,7 +58,7 @@ SDL_Window *GameWindow::nativeWindow() const {
     return mWindow;
 }
 
-bool GameWindow::processEvents(double frameSeconds) {
+bool GameWindow::processEvents(double frameSeconds, bool const blockMapInput) {
     if (!std::isfinite(frameSeconds) || frameSeconds < 0.0) {
         throw std::invalid_argument("Window input requires a non-negative, finite frame time.");
     }
@@ -78,22 +78,30 @@ bool GameWindow::processEvents(double frameSeconds) {
         }
 
         if (event.type == SDL_EVENT_KEY_DOWN && event.key.windowID == SDL_GetWindowID(mWindow) && !event.key.repeat) {
-            if (event.key.key == SDLK_Z) {
-                mCameraCommands.push_back({CameraCommandType::ZOOM_IN});
-            } else if (event.key.key == SDLK_X) {
-                mCameraCommands.push_back({CameraCommandType::ZOOM_OUT});
-            } else if (event.key.key == SDLK_1) {
-                mPendingSpeed = Simulation::GameSpeed::NORMAL;
-            } else if (event.key.key == SDLK_2) {
-                mPendingSpeed = Simulation::GameSpeed::FAST;
-            } else if (event.key.key == SDLK_3) {
-                mPendingSpeed = Simulation::GameSpeed::ULTRA;
+            if (!blockMapInput && (event.key.key == SDLK_Z || event.key.key == SDLK_X)) {
+                CameraCommandType const type =
+                    event.key.key == SDLK_Z ? CameraCommandType::ZOOM_IN : CameraCommandType::ZOOM_OUT;
+                mCameraCommands.push_back({type});
+            } else if (event.key.key == SDLK_1 || event.key.key == SDLK_2 || event.key.key == SDLK_3) {
+                switch (event.key.key) {
+                case SDLK_1:
+                    mPendingSpeed = Simulation::GameSpeed::NORMAL;
+                    break;
+                case SDLK_2:
+                    mPendingSpeed = Simulation::GameSpeed::FAST;
+                    break;
+                case SDLK_3:
+                    mPendingSpeed = Simulation::GameSpeed::ULTRA;
+                    break;
+                default:
+                    break;
+                }
             } else if (event.key.key == SDLK_SPACE) {
                 mPendingPauseToggle = true;
             }
         }
 
-        if (event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == SDL_GetWindowID(mWindow)) {
+        if (!blockMapInput && event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == SDL_GetWindowID(mWindow)) {
             double direction = static_cast<double>(event.wheel.y);
             if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
                 direction = -direction;
@@ -108,7 +116,7 @@ bool GameWindow::processEvents(double frameSeconds) {
 
         if ((event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP) &&
             event.button.windowID == SDL_GetWindowID(mWindow) && event.button.button == SDL_BUTTON_MIDDLE) {
-            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !mMiddleButtonDown) {
+            if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && !mMiddleButtonDown && !blockMapInput) {
                 Simulation::Vector2 const cursor = toPixelPosition(event.button.x, event.button.y);
                 mCameraCommands.push_back({CameraCommandType::MIDDLE_DRAG_BEGIN, cursor.x, cursor.y});
                 mMiddleButtonDown = true;
@@ -118,13 +126,13 @@ bool GameWindow::processEvents(double frameSeconds) {
             }
         }
 
-        if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.windowID == SDL_GetWindowID(mWindow) &&
-            event.button.button == SDL_BUTTON_LEFT) {
+        if (!blockMapInput && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+            event.button.windowID == SDL_GetWindowID(mWindow) && event.button.button == SDL_BUTTON_LEFT) {
             mLeftClicks.push_back(toPixelPosition(event.button.x, event.button.y));
         }
 
-        if (event.type == SDL_EVENT_MOUSE_MOTION && event.motion.windowID == SDL_GetWindowID(mWindow) &&
-            mMiddleButtonDown) {
+        if (!blockMapInput && event.type == SDL_EVENT_MOUSE_MOTION &&
+            event.motion.windowID == SDL_GetWindowID(mWindow) && mMiddleButtonDown) {
             Simulation::Vector2 const delta = toPixelDelta(event.motion.xrel, event.motion.yrel);
             mCameraCommands.push_back({CameraCommandType::MIDDLE_DRAG_UPDATE, delta.x, delta.y});
         }
@@ -132,7 +140,7 @@ bool GameWindow::processEvents(double frameSeconds) {
 
     int keyCount{};
     bool const *const keys = SDL_GetKeyboardState(&keyCount);
-    if (keys != nullptr && keyCount > SDL_SCANCODE_S) {
+    if (!blockMapInput && keys != nullptr && keyCount > SDL_SCANCODE_S) {
         double horizontal = static_cast<double>(keys[SDL_SCANCODE_D]) - static_cast<double>(keys[SDL_SCANCODE_A]);
         double vertical = static_cast<double>(keys[SDL_SCANCODE_W]) - static_cast<double>(keys[SDL_SCANCODE_S]);
         double const directionLength = std::hypot(horizontal, vertical);

@@ -117,7 +117,7 @@ int runGame() {
         auto const now = std::chrono::steady_clock::now();
         double const frameSeconds = std::chrono::duration<double>(now - previousFrameTime).count();
         previousFrameTime = now;
-        if (!window.processEvents(frameSeconds)) {
+        if (!window.processEvents(frameSeconds, renderer.blocksMapInput())) {
             break;
         }
         std::vector<Simulation::Vector2> const clicks = window.consumeLeftClicks();
@@ -142,7 +142,7 @@ int runGame() {
                 selectedBody = hitTest(snapshot, window.camera(), renderer.viewport(), click);
             }
         }
-        renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), selectedBody);
+        renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), selectedBody, clientState);
     }
     return 0;
 }
@@ -154,7 +154,7 @@ int runSmokeTest() {
     Client clientState;
     Server::GameSnapshot const snapshot = server.snapshot();
     clientState.receiveGameState(snapshot);
-    renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), 0);
+    renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), 0, clientState);
     return 0;
 }
 
