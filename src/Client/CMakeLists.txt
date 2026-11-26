@@ -100,7 +100,7 @@ target_link_libraries(
 )
 
 if(BUILD_TESTING)
-    add_executable(Client.Test Camera.Test.cpp Selection.Test.cpp VulkanRenderer.Test.cpp)
+    add_executable(Client.Test Camera.Test.cpp EconomyHistory.Test.cpp Selection.Test.cpp VulkanRenderer.Test.cpp)
     target_link_libraries(Client.Test PRIVATE Client Catch2::Catch2WithMain galaxies_compile_options)
     copy_conan_runtime_dlls(Client.Test)
     add_test(NAME Client.Unit COMMAND Client.Test)
