@@ -45,6 +45,12 @@ public:
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
 
+    /** Returns and clears the colony selected in the empire screen ranking table. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> consumeRequestedEconomyColony() noexcept;
+
+    /** Returns the selected colony request without clearing it. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> requestedEconomyColony() const noexcept;
+
     /** Returns the current drawable swapchain dimensions in pixels. */
     [[nodiscard]] VkExtent2D viewport() const;
 

@@ -14,7 +14,7 @@ namespace {
     constexpr float INFO_WINDOW_WIDTH = 220.0F;
     constexpr float INFO_WINDOW_HEIGHT = 60.0F;
     constexpr float GAME_TIME_WINDOW_WIDTH = 220.0F;
-    constexpr float GAME_TIME_WINDOW_HEIGHT = 48.0F;
+    constexpr float GAME_TIME_WINDOW_HEIGHT = 72.0F;
     constexpr float WINDOW_PADDING = 8.0F;
     constexpr float SELECTION_LINE_THICKNESS = 2.0F;
 
@@ -194,7 +194,20 @@ void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameS
     ImGui::TextUnformatted(dateText.c_str());
     std::string const speedText = std::string("Speed: ") + std::string(speedName(speed));
     ImGui::TextUnformatted(speedText.c_str());
+    mEmpireEconomyUi.drawTopBarButton();
     ImGui::End();
+}
+
+void Ui::drawEmpireEconomy(std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const> records) {
+    mEmpireEconomyUi.draw(records);
+}
+
+std::optional<Simulation::Economy::ColonyId> Ui::consumeRequestedEconomyColony() noexcept {
+    return mEmpireEconomyUi.consumeRequestedColony();
+}
+
+std::optional<Simulation::Economy::ColonyId> Ui::requestedEconomyColony() const noexcept {
+    return mEmpireEconomyUi.requestedColony();
 }
 
 bool Ui::wantsMouseCapture() const {

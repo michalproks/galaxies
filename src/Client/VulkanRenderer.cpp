@@ -664,6 +664,10 @@ void VulkanRenderer::renderFrame(Camera const &camera,
         }
         mUi->beginFrame();
         mUi->drawGameTimeBox(Simulation::dateTimeFromGameHours(snapshot.gameHours), snapshot.speed);
+        mUi->drawEmpireEconomy(
+            snapshot.economyRecords != nullptr
+                ? std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const>(*snapshot.economyRecords)
+                : std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const>{});
         if (selectedBody.has_value() && selectedBody.value() < snapshot.bodies.size()) {
             Server::BodySnapshot const &body = snapshot.bodies[selectedBody.value()];
             mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));
@@ -710,6 +714,14 @@ VkExtent2D VulkanRenderer::viewport() const {
 
 bool VulkanRenderer::wantsMouseCapture() const {
     return mUi != nullptr && mUi->wantsMouseCapture();
+}
+
+std::optional<Simulation::Economy::ColonyId> VulkanRenderer::consumeRequestedEconomyColony() noexcept {
+    return mUi == nullptr ? std::nullopt : mUi->consumeRequestedEconomyColony();
+}
+
+std::optional<Simulation::Economy::ColonyId> VulkanRenderer::requestedEconomyColony() const noexcept {
+    return mUi == nullptr ? std::nullopt : mUi->requestedEconomyColony();
 }
 
 void VulkanRenderer::destroySwapchainResources() {

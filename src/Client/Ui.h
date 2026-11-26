@@ -1,12 +1,15 @@
 #ifndef GALAXIES_CLIENT_UI_H
 #define GALAXIES_CLIENT_UI_H
 
+#include "EmpireEconomyUi.h"
 #include "Selection.h"
 
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string_view>
 
 struct ImDrawData;
@@ -53,6 +56,15 @@ public:
     /** Draws the fixed top-right game date-time and speed display. */
     void drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed);
 
+    /** Draws the empire economy screen from the snapshot's player-facing histories. */
+    void drawEmpireEconomy(std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const> records);
+
+    /** Returns and clears the colony selected in the empire ranking table. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> consumeRequestedEconomyColony() noexcept;
+
+    /** Returns the colony selected in the empire ranking table without clearing the request. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> requestedEconomyColony() const noexcept;
+
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
 
@@ -67,6 +79,7 @@ private:
     VkQueue mQueue{};
     VkDescriptorPool mDescriptorPool{};
     VkExtent2D mViewport{};
+    EmpireEconomyUi mEmpireEconomyUi;
     bool mSdlBackendInitialized{};
     bool mVulkanBackendInitialized{};
 };
