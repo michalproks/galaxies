@@ -44,12 +44,13 @@ struct ExpectedSector {
     std::int64_t operatingCost;
 };
 
-constexpr std::array<ExpectedSector, 5> EXPECTED_SECTORS{{
+constexpr std::array<ExpectedSector, 6> EXPECTED_SECTORS{{
     {SectorId::Food, 477, 1'850'000'000, ResourceId::Food, 4, 5'712'670'000, 4'383'630'000},
     {SectorId::Materials, 54, 210'000'000, ResourceId::Materials, 6, 105'730'000, 496'260'000},
-    {SectorId::Fuel, 65, 50'000'000, ResourceId::Fuel, 10, 12'800'000, 119'470'000},
+    {SectorId::Fuel, 13, 50'000'000, ResourceId::Fuel, 10, 12'800'000, 119'470'000},
     {SectorId::Energy, 13, 80'000'000, ResourceId::Energy, 15, 12'800'000, 188'580'000},
     {SectorId::ConsumerGoods, 96, 620'000'000, ResourceId::ConsumerGoods, 30, 95'020'000, 1'479'240'000},
+    {SectorId::Service, 0, 1'200'000'000, ResourceId::Service, 40, 71'270'000, 2'860'000'000},
 }};
 
 [[nodiscard]] std::int64_t totalCredits(ColonyEconomy const &colony) {
@@ -99,14 +100,12 @@ TEST_CASE("Earth seed satisfies the initial-state population, money, ownership, 
     ColonyEconomy const colony = buildEarthSeed(ColonyId{7}, 0xA8U);
 
     REQUIRE(colony.households.size() == 500);
-    REQUIRE(colony.corporations.size() == 15);
+    REQUIRE(colony.corporations.size() == 18);
     CHECK(colony.turnNumber == 1);
     CHECK(colony.id == ColonyId{7});
     CHECK(colony.economySeed == 0xA8U);
     CHECK(colony.totalPopulation == 500'000'000);
-    CHECK(totalCredits(colony) == 58'430'000'000);
-    // The specification's stated total includes three 1.2B service firms not in its 15-firm count.
-    CHECK(totalCredits(colony) + 3'600'000'000 == 62'030'000'000);
+    CHECK(totalCredits(colony) == 62'030'000'000);
 
     std::int64_t population{};
     std::int64_t householdCredits{};
@@ -153,7 +152,7 @@ TEST_CASE("Earth seed satisfies the initial-state population, money, ownership, 
             }));
         }
     }
-    CHECK(corporationCredits == 8'430'000'000);
+    CHECK(corporationCredits == 12'030'000'000);
     CHECK(corporationOwners.size() == colony.corporations.size());
 
     std::int64_t const smoothedFoodPrice = std::accumulate(colony.households.front().foodPriceHistory.begin(),
@@ -193,14 +192,16 @@ TEST_CASE("Earth seed prices, beliefs, demand, supported buildings, and table ca
 
     for (ExpectedSector const &expected : EXPECTED_SECTORS) {
         CHECK(buildingCount(colony, expected.sector) == expected.buildings);
-        CHECK(totalSupply(colony, expected.sector) >= expected.demandQuantity);
+        if (expected.sector != SectorId::Service) {
+            CHECK(totalSupply(colony, expected.sector) >= expected.demandQuantity);
+        }
         CHECK(colony.market.lastPriceFor(expected.output) == expected.demandPrice);
         CHECK(std::count_if(
                   colony.corporations.begin(), colony.corporations.end(), [&expected](Corporation const &corporation) {
                       return corporation.sector == expected.sector;
                   }) == 3);
-        std::int64_t const minOperatingCapital =
-            (expected.operatingCost + 2) / 3; // The per-corporation amount is the sector cost rounded up.
+        std::int64_t const minOperatingCapital = (expected.operatingCost + 2) / 3;
+        std::int64_t sectorDemand{};
         for (Corporation const &corporation : colony.corporations) {
             if (corporation.sector != expected.sector) {
                 continue;
@@ -208,8 +209,9 @@ TEST_CASE("Earth seed prices, beliefs, demand, supported buildings, and table ca
             CHECK(corporation.credits == expected.creditsPerCorporation);
             CHECK(static_cast<std::int64_t>(corporation.credits * (1.0 - RESERVE_FRACTION)) >= minOperatingCapital);
             CHECK(corporation.sectorDemand.steps.size() == 1);
-            std::pair<std::int64_t, std::int64_t> const expectedStep{expected.demandPrice, expected.demandQuantity};
-            CHECK(corporation.sectorDemand.steps.front() == expectedStep);
+            CHECK(corporation.sectorDemand.steps.front().first ==
+                  expected.demandPrice + (expected.sector == SectorId::Service ? 1 : 0));
+            sectorDemand += corporation.sectorDemand.steps.front().second;
             for (ExpectedPrice const &seedPrice : EXPECTED_PRICES) {
                 PriceBelief const belief = corporation.priceBeliefs[static_cast<std::size_t>(seedPrice.resource)];
                 CHECK(belief.mean == static_cast<double>(seedPrice.price));
@@ -231,12 +233,13 @@ TEST_CASE("Earth seed prices, beliefs, demand, supported buildings, and table ca
                 CHECK(method->capacity > 0);
             }
         }
+        CHECK(sectorDemand == expected.demandQuantity);
     }
 
     CHECK(buildingCount(colony, SectorId::Service) == 0);
     CHECK(std::count_if(colony.corporations.begin(), colony.corporations.end(), [](Corporation const &corporation) {
               return corporation.sector == SectorId::Service;
-          }) == 0);
+          }) == 3);
     std::int64_t labourPurchased{};
     for (Corporation const &corporation : colony.corporations) {
         for (Building const &building : corporation.buildings) {
@@ -252,7 +255,7 @@ TEST_CASE("Earth seed prices, beliefs, demand, supported buildings, and table ca
         }
     }
     labourPurchased += 71'500'000; // Manual service staffing from the seed-capacity table.
-    CHECK(labourPurchased == 218'085'000);
+    CHECK(labourPurchased == 213'795'000);
     CHECK(labourPurchased <= colony.totalPopulation);
 
     ColonyEconomy const repeat = buildEarthSeed(ColonyId{3}, 41);
@@ -281,5 +284,13 @@ TEST_CASE("Earth seed turn-one settlements stay near the fictional seed prices")
         CHECK(std::abs(settlement->price - expected.price) <= tolerance);
     }
     CHECK(result.colony.market.lastPriceFor(ResourceId::Labour) == 40);
+    auto const labourSettlement =
+        std::find_if(result.settlements.begin(), result.settlements.end(), [](SettlementOutcome const &outcome) {
+            return outcome.resource == ResourceId::Labour;
+        });
+    REQUIRE(labourSettlement != result.settlements.end());
+    CHECK(labourSettlement->price == 40);
+    std::int64_t const unsoldLabour = 500'000'000 - labourSettlement->tradedQuantity;
+    CHECK(std::abs(unsoldLabour - 286'205'000) <= 2'000'000);
 }
 } // namespace

@@ -38,14 +38,13 @@ namespace {
         std::int64_t demandQuantity;
     };
 
-    // The requested 15-agent count excludes the separate three-corporation service row in the spec.
-    constexpr std::array<SectorSeed, 5> SECTOR_SEEDS{{
+    constexpr std::array<SectorSeed, 6> SECTOR_SEEDS{{
         {SectorId::Food, 477, 1'850'000'000, SEED_FOOD_PRICE, 5'712'670'000},
         {SectorId::Materials, 54, 210'000'000, SEED_MATERIALS_PRICE, 105'730'000},
-        // The current production table has no Fuel Tier2; Tier1 count preserves nominal capacity.
-        {SectorId::Fuel, 65, 50'000'000, SEED_FUEL_PRICE, 12'800'000},
+        {SectorId::Fuel, 13, 50'000'000, SEED_FUEL_PRICE, 12'800'000},
         {SectorId::Energy, 13, 80'000'000, SEED_ENERGY_PRICE, 12'800'000},
         {SectorId::ConsumerGoods, 96, 620'000'000, SEED_CONSUMER_GOODS_PRICE, 95'020'000},
+        {SectorId::Service, 0, 1'200'000'000, SEED_SERVICE_PRICE, 71'270'000},
     }};
 
     constexpr std::array<std::pair<ResourceId, std::int64_t>, 7> SEED_PRICES{{
@@ -76,13 +75,39 @@ namespace {
     }
 
     [[nodiscard]] BuildTier seededTier(SectorId const sector) {
-        return sector == SectorId::Energy || sector == SectorId::Fuel ? BuildTier::Tier1 : BuildTier::Tier2;
+        if (sector == SectorId::Energy) {
+            return BuildTier::Tier1;
+        }
+        return sector == SectorId::Service ? BuildTier::Manual : BuildTier::Tier2;
     }
 
-    [[nodiscard]] Corporation
-    makeCorporation(SectorSeed const &seed, std::int64_t const index, HouseholdId const owner) {
+    [[nodiscard]] std::int64_t buildingsForCorporation(SectorSeed const &seed, std::int64_t const index) {
+        return seed.buildingCount / NUM_CORPORATIONS_PER_SECTOR +
+               (index < seed.buildingCount % NUM_CORPORATIONS_PER_SECTOR ? 1 : 0);
+    }
+
+    [[nodiscard]] std::int64_t demandForCorporation(SectorSeed const &seed, std::int64_t const index) {
+        if (seed.buildingCount == 0) {
+            return seed.demandQuantity / NUM_CORPORATIONS_PER_SECTOR +
+                   (index < seed.demandQuantity % NUM_CORPORATIONS_PER_SECTOR ? 1 : 0);
+        }
+        std::int64_t precedingBuildings{};
+        for (std::int64_t corporationIndex = 0; corporationIndex < index; ++corporationIndex) {
+            precedingBuildings += buildingsForCorporation(seed, corporationIndex);
+        }
+        std::int64_t const currentBuildings = buildingsForCorporation(seed, index);
+        std::int64_t const demandBefore = seed.demandQuantity * precedingBuildings / seed.buildingCount;
+        std::int64_t const demandAfter =
+            seed.demandQuantity * (precedingBuildings + currentBuildings) / seed.buildingCount;
+        return demandAfter - demandBefore;
+    }
+
+    [[nodiscard]] Corporation makeCorporation(SectorSeed const &seed,
+                                              CorporationId const id,
+                                              std::int64_t const sectorCorporationIndex,
+                                              HouseholdId const owner) {
         Corporation corporation;
-        corporation.id = CorporationId{index};
+        corporation.id = id;
         corporation.owner = owner;
         corporation.sector = seed.sector;
         corporation.credits = seed.creditsPerCorporation;
@@ -90,7 +115,10 @@ namespace {
         if (output.has_value()) {
             corporation.lastSettlementPrice = seedPriceFor(output.value());
         }
-        corporation.sectorDemand.steps = {{seed.demandPrice, seed.demandQuantity}};
+        // A one-cent planning margin lets the zero-profit service sector staff;
+        // the realized reservation and market prices remain at the 40 seed anchor.
+        std::int64_t const demandPrice = seed.sector == SectorId::Service ? seed.demandPrice + 1 : seed.demandPrice;
+        corporation.sectorDemand.steps = {{demandPrice, demandForCorporation(seed, sectorCorporationIndex)}};
         corporation.hasHadFirstBuilding = true;
         seedCorporationBeliefs(corporation);
         return corporation;
@@ -146,13 +174,13 @@ ColonyEconomy buildEarthSeed(ColonyId const colonyId, std::uint64_t const econom
     for (SectorSeed const &seed : SECTOR_SEEDS) {
         for (std::int64_t index = 0; index < NUM_CORPORATIONS_PER_SECTOR; ++index) {
             std::int64_t const ownerIndex = householdIndices[static_cast<std::size_t>(corporationIndex)];
-            Corporation corporation = makeCorporation(seed, corporationIndex, HouseholdId{ownerIndex});
+            Corporation corporation =
+                makeCorporation(seed, CorporationId{corporationIndex}, index, HouseholdId{ownerIndex});
             BuildTier const tier = seededTier(seed.sector);
             std::vector<BuildingDef> const methods = availableMethods(seed.sector);
             auto const definition = std::find_if(
                 methods.begin(), methods.end(), [tier](BuildingDef const &method) { return method.tier == tier; });
-            std::int64_t const count = seed.buildingCount / NUM_CORPORATIONS_PER_SECTOR +
-                                       (index < seed.buildingCount % NUM_CORPORATIONS_PER_SECTOR ? 1 : 0);
+            std::int64_t const count = buildingsForCorporation(seed, index);
             if (definition != methods.end()) {
                 corporation.buildings.reserve(static_cast<std::size_t>(count));
                 for (std::int64_t buildingIndex = 0; buildingIndex < count; ++buildingIndex) {
