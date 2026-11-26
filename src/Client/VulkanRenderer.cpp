@@ -602,6 +602,7 @@ void VulkanRenderer::renderFrame(Camera const &camera,
                                  Server::GameSnapshot const &snapshot,
                                  VkExtent2D viewport,
                                  std::optional<std::size_t> selectedBody,
+                                 DebugOverlay &debugOverlay,
                                  Client const &client) {
     if (viewport.width == 0 || viewport.height == 0 || viewport.width != mExtent.width ||
         viewport.height != mExtent.height) {
@@ -675,6 +676,7 @@ void VulkanRenderer::renderFrame(Camera const &camera,
             mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));
             mUi->drawEconomyInfoBox(body.name, colonyIdForBody(snapshot, selectedBody.value()), client);
         }
+        mUi->drawDebugOverlay(debugOverlay, client, snapshot, selectedBody);
         ImDrawData *const drawData = mUi->endFrame();
         checkVk(vkResetCommandBuffer(mCommandBuffers[imageIndex], 0), "vkResetCommandBuffer");
         recordCommandBuffer(imageIndex, snapshot, bodyDraws, drawData);

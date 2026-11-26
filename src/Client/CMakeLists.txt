@@ -72,6 +72,7 @@ add_custom_target(
 add_library(Client STATIC
     Camera.cpp
     Client.cpp
+    DebugOverlay.cpp
     EconomyChart.cpp
     EconomyUi.cpp
     EmpireEconomyUi.cpp
@@ -106,6 +107,7 @@ if(BUILD_TESTING)
     add_executable(
         Client.Test
         Camera.Test.cpp
+        DebugOverlay.Test.cpp
         EconomyChart.Test.cpp
         EconomyUi.Test.cpp
         EmpireEconomyUi.Test.cpp

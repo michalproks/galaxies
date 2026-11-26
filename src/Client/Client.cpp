@@ -1,5 +1,7 @@
 #include "Client.h"
 
+#include "DebugOverlay.h"
+
 #include "GameWindow.h"
 #include "Selection.h"
 #include "VulkanRenderer.h"
@@ -109,6 +111,7 @@ int runGame() {
     VulkanRenderer renderer(window);
     Server::Server server;
     Client clientState;
+    DebugOverlay debugOverlay;
     std::optional<std::size_t> selectedBody;
     auto previousFrameTime = std::chrono::steady_clock::now();
     Simulation::GameSpeed lastNonPausedSpeed{Simulation::GameSpeed::NORMAL};
@@ -142,7 +145,7 @@ int runGame() {
                 selectedBody = hitTest(snapshot, window.camera(), renderer.viewport(), click);
             }
         }
-        renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), selectedBody, clientState);
+        renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), selectedBody, debugOverlay, clientState);
         if (std::optional<Simulation::Economy::ColonyId> const colony = renderer.requestedEconomyColony();
             colony.has_value() && colony->value == 0) {
             for (std::size_t bodyIndex = 0; bodyIndex < snapshot.bodies.size(); ++bodyIndex) {
@@ -161,9 +164,10 @@ int runSmokeTest() {
     VulkanRenderer renderer(window);
     Server::Server server;
     Client clientState;
+    DebugOverlay debugOverlay;
     Server::GameSnapshot const snapshot = server.snapshot();
     clientState.receiveGameState(snapshot);
-    renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), 0, clientState);
+    renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), 0, debugOverlay, clientState);
     return 0;
 }
 

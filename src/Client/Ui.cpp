@@ -1,5 +1,7 @@
 #include "Ui.h"
 
+#include "DebugOverlay.h"
+
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -218,6 +220,13 @@ std::optional<Simulation::Economy::ColonyId> Ui::consumeRequestedEconomyColony()
 
 std::optional<Simulation::Economy::ColonyId> Ui::requestedEconomyColony() const noexcept {
     return mEmpireEconomyUi.requestedColony();
+}
+
+void Ui::drawDebugOverlay(DebugOverlay &overlay,
+                          Client const &client,
+                          Server::GameSnapshot const &snapshot,
+                          std::optional<std::size_t> selectedBody) {
+    overlay.draw(client, snapshot, selectedBody);
 }
 
 bool Ui::wantsMouseCapture() const {

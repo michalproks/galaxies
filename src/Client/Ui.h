@@ -8,14 +8,21 @@
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <string_view>
 
 struct ImDrawData;
+namespace Server {
+struct GameSnapshot;
+}
 
 namespace Client {
+
+class Client;
+class DebugOverlay;
 
 class Ui {
 public:
@@ -70,6 +77,12 @@ public:
 
     /** Returns the colony selected in the empire ranking table without clearing the request. */
     [[nodiscard]] std::optional<Simulation::Economy::ColonyId> requestedEconomyColony() const noexcept;
+
+    /** Mounts the economy debug overlay into the active ImGui frame. */
+    void drawDebugOverlay(DebugOverlay &overlay,
+                          Client const &client,
+                          Server::GameSnapshot const &snapshot,
+                          std::optional<std::size_t> selectedBody);
 
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
