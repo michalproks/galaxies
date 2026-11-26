@@ -50,6 +50,12 @@ public:
     /** Returns whether the economy modal blocks map camera input. */
     [[nodiscard]] bool blocksMapInput() const;
 
+    /** Returns and clears the colony selected in the empire screen ranking table. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> consumeRequestedEconomyColony() noexcept;
+
+    /** Returns the selected colony request without clearing it. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> requestedEconomyColony() const noexcept;
+
     /** Returns the current drawable swapchain dimensions in pixels. */
     [[nodiscard]] VkExtent2D viewport() const;
 

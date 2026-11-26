@@ -143,6 +143,15 @@ int runGame() {
             }
         }
         renderer.renderFrame(window.camera(), snapshot, renderer.viewport(), selectedBody, clientState);
+        if (std::optional<Simulation::Economy::ColonyId> const colony = renderer.requestedEconomyColony();
+            colony.has_value() && colony->value == 0) {
+            for (std::size_t bodyIndex = 0; bodyIndex < snapshot.bodies.size(); ++bodyIndex) {
+                if (snapshot.bodies[bodyIndex].name == "Earth") {
+                    selectedBody = bodyIndex;
+                    break;
+                }
+            }
+        }
     }
     return 0;
 }

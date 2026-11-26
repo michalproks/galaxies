@@ -74,6 +74,7 @@ add_library(Client STATIC
     Client.cpp
     EconomyChart.cpp
     EconomyUi.cpp
+    EmpireEconomyUi.cpp
     GameWindow.cpp
     ImGuiVulkanBackend.cpp
     Selection.cpp
@@ -107,6 +108,7 @@ if(BUILD_TESTING)
         Camera.Test.cpp
         EconomyChart.Test.cpp
         EconomyUi.Test.cpp
+        EmpireEconomyUi.Test.cpp
         EconomyHistory.Test.cpp
         Selection.Test.cpp
         VulkanRenderer.Test.cpp
