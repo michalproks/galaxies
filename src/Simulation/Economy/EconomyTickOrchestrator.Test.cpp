@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -112,6 +113,29 @@ TEST_CASE("Earth seed maintains money and near-seed prices across turns 1 throug
         REQUIRE(records[0].debugRecords.size() == static_cast<std::size_t>(period));
 
         DebugRecord const &debug = records[0].debugRecords.back();
+        if (period == 1) {
+            auto const labour = std::find_if(
+                debug.settlements.begin(), debug.settlements.end(), [](SettlementOutcome const &settlement) {
+                    return settlement.resource == ResourceId::Labour;
+                });
+            REQUIRE(labour != debug.settlements.end());
+            CHECK(!(labour->candidateEvaluations.empty()));
+            CHECK(debug.corporationOutcomes.size() == debug.beforeState.corporations.size());
+            for (Corporation const &corporation : debug.beforeState.corporations) {
+                CHECK(std::any_of(
+                    debug.corporationOutcomes.begin(),
+                    debug.corporationOutcomes.end(),
+                    [&corporation](CorporationTickOutcome const &outcome) { return outcome.id == corporation.id; }));
+            }
+            CHECK(std::any_of(
+                debug.invariantResults.begin(), debug.invariantResults.end(), [](EconomyInvariantResult const &result) {
+                    return result.id == "credits-conserved" && result.passed;
+                }));
+            CHECK(std::any_of(
+                debug.invariantResults.begin(), debug.invariantResults.end(), [](EconomyInvariantResult const &result) {
+                    return result.id == "standard-resources-conserved" && result.passed;
+                }));
+        }
         expectedCredits += debug.liquidationCredits;
         CHECK(totalCredits(debug.afterState) == expectedCredits);
         CHECK(debug.afterState.turnNumber == period + 1);

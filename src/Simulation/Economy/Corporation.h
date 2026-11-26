@@ -11,9 +11,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace Simulation::Economy {
+
+/** Maximum demand-curve steps and per-building staffing decisions retained per planning trace. */
+inline constexpr std::size_t MAX_PLANNING_DEMAND_STEPS = 64;
+inline constexpr std::size_t MAX_PLANNING_STAFFING_ENTRIES = 64;
 
 /** A single-sector company owned by exactly one household; each household owns at most one. */
 struct Corporation {
@@ -69,6 +74,35 @@ struct BuildingStaffing {
     std::int64_t workers{};
 };
 
+/** Per-method cost and capacity values shown by the developer planning inspector. */
+struct CorporationMethodDiagnostic {
+    BuildTier tier{BuildTier::Manual};
+    double unitCost{};
+    std::int64_t outputCapacity{};
+};
+
+/** Planning decisions copied from the exact values calculated by planCorporation. */
+struct CorporationPlanDiagnostic {
+    std::vector<std::pair<std::int64_t, std::int64_t>> demandSteps;
+    std::vector<CorporationMethodDiagnostic> methods;
+    std::vector<BuildingStaffing> staffing;
+    bool demandStepsTruncated{};
+    bool staffingTruncated{};
+    std::int64_t targetPrice{};
+    std::int64_t targetQuantity{};
+    double targetProfit{};
+    double breakEvenPrice{};
+    std::int64_t budget{};
+    std::int64_t plannedOutput{};
+    std::int64_t plannedCost{};
+    std::int64_t idleOutputCapacity{};
+    std::int64_t maintenanceLabour{};
+    std::int64_t maintenanceMaterials{};
+    bool surplusDecision{};
+    bool constructionGatePassed{};
+    bool budgetClampFired{};
+};
+
 /** Purely computed corporation decisions for one economic turn. */
 struct CorporationPlan {
     /** Market buy and sell orders generated from this plan. */
@@ -101,6 +135,8 @@ struct CorporationPlan {
     std::int64_t liquidationProceeds{};
     /** True when the end-of-turn balance is zero and the corporation is liquidated. */
     bool liquidate{};
+    /** Exact intermediate planning values retained for diagnostics and player details. */
+    CorporationPlanDiagnostic diagnostic;
 };
 
 /**

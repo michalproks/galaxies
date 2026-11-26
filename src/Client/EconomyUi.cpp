@@ -6,7 +6,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
 #include <iterator>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -65,6 +67,10 @@ namespace {
             return "Food reserve risk";
         case EconomyWarning::CONSUMER_MARKET_SHORTFALL:
             return "Consumer shortfall";
+        case EconomyWarning::UNPAID_MAINTENANCE:
+            return "Unpaid maintenance";
+        case EconomyWarning::BANKRUPTCY_RISK:
+            return "Low corporate balance";
         }
         return "Economy warning";
     }
@@ -96,6 +102,21 @@ namespace {
         return static_cast<double>(quantity) / 1000.0;
     }
 
+    struct SectorAmount {
+        std::int64_t quantity{};
+        std::size_t sector{};
+    };
+
+    [[nodiscard]] std::string sectorAmount(SectorAmount const amount) {
+        std::ostringstream stream;
+        if (amount.sector == 0 || amount.sector == 1 || amount.sector == 2 || amount.sector == 5) {
+            stream << std::fixed << std::setprecision(2) << quantityInTons(amount.quantity) << " t";
+        } else {
+            stream << amount.quantity;
+        }
+        return stream.str();
+    }
+
     [[nodiscard]] std::optional<double> coverageTurns(PlayerRecord const &record, ResourceId const resource) noexcept {
         std::int64_t consumption{};
         if (resource == ResourceId::Food) {
@@ -113,6 +134,21 @@ namespace {
         constexpr std::array<std::string_view, Simulation::Economy::SECTOR_COUNT> NAMES{
             "Food", "Materials", "Fuel", "Energy", "Services", "Consumer goods"};
         return index < NAMES.size() ? NAMES[index].data() : "Unknown";
+    }
+
+    [[nodiscard]] char const *buildingCondition(Simulation::Economy::PlayerBuildingCondition const condition) noexcept {
+        using Simulation::Economy::PlayerBuildingCondition;
+        switch (condition) {
+        case PlayerBuildingCondition::OPERATIONAL:
+            return "operational";
+        case PlayerBuildingCondition::IDLE:
+            return "idle";
+        case PlayerBuildingCondition::UNDER_CONSTRUCTION:
+            return "under construction";
+        case PlayerBuildingCondition::MAINTENANCE_UNPAID:
+            return "maintenance unpaid";
+        }
+        return "unknown";
     }
 
     void drawPriceRow(PlayerRecord const &record, ResourceId const resource) {
@@ -186,7 +222,8 @@ namespace {
 
     void drawCorporationTable(PlayerRecord const &record, std::optional<EconomyWarning> const highlight) {
         ImGui::TextUnformatted("Corporations");
-        if (highlight == EconomyWarning::CONSUMER_MARKET_SHORTFALL) {
+        if (highlight == EconomyWarning::CONSUMER_MARKET_SHORTFALL || highlight == EconomyWarning::UNPAID_MAINTENANCE ||
+            highlight == EconomyWarning::BANKRUPTCY_RISK) {
             ImGui::SetScrollHereY();
         }
         ImGuiTableFlags const tableFlags = static_cast<ImGuiTableFlags>(static_cast<unsigned>(ImGuiTableFlags_Borders) |
@@ -204,22 +241,84 @@ namespace {
                 ImGui::TableSetColumnIndex(1);
                 ImGui::Text("%lld", static_cast<long long>(record.corporationCounts[sector]));
                 ImGui::TableSetColumnIndex(2);
-                if (sector == 0 || sector == 1 || sector == 2 || sector == 5) {
-                    ImGui::Text("%.2f t", quantityInTons(record.produced[sector]));
-                } else {
-                    ImGui::Text("%lld", static_cast<long long>(record.produced[sector]));
-                }
+                std::string const produced = sectorAmount({record.produced[sector], sector});
+                ImGui::TextUnformatted(produced.c_str());
                 ImGui::TableSetColumnIndex(3);
-                if (sector == 0 || sector == 1 || sector == 2 || sector == 5) {
-                    ImGui::Text("%.2f t", quantityInTons(record.sold[sector]));
-                } else {
-                    ImGui::Text("%lld", static_cast<long long>(record.sold[sector]));
-                }
+                std::string const sold = sectorAmount({record.sold[sector], sector});
+                ImGui::TextUnformatted(sold.c_str());
                 if (expanded) {
-                    ImGui::TableNextRow();
-                    ImGui::TableSetColumnIndex(0);
-                    ImGui::TextWrapped(
-                        "Per-corporation buildings, plans, and orders are not included in the player-facing history.");
+                    for (Simulation::Economy::PlayerCorporationDetail const &corporation : record.corporationDetails) {
+                        if (static_cast<std::size_t>(corporation.sector) != sector) {
+                            continue;
+                        }
+                        ImGui::TableNextRow();
+                        ImGui::TableSetColumnIndex(0);
+                        std::string const corporationLabel = "Company " + std::to_string(corporation.id.value) +
+                                                             "##corp-" + std::to_string(corporation.id.value);
+                        bool const corporationExpanded = ImGui::TreeNode(corporationLabel.c_str());
+                        ImGui::TableSetColumnIndex(1);
+                        ImGui::Text("%.2f cr", static_cast<double>(corporation.credits) / 100.0);
+                        ImGui::TableSetColumnIndex(2);
+                        ImGui::Text("%lld planned / %lld actual",
+                                    static_cast<long long>(corporation.plannedOutput),
+                                    static_cast<long long>(corporation.actualOutput));
+                        ImGui::TableSetColumnIndex(3);
+                        ImGui::Text("%lld sold", static_cast<long long>(corporation.sold));
+                        if (corporationExpanded) {
+                            ImGui::Text("Owner H%lld | balance change %.2f cr | planned cost %.2f cr",
+                                        static_cast<long long>(corporation.owner.value),
+                                        static_cast<double>(corporation.creditChange) / 100.0,
+                                        static_cast<double>(corporation.plannedCost) / 100.0);
+                            ImGui::Text("Plan: target %lld @ %lld | break-even %.2f",
+                                        static_cast<long long>(corporation.targetQuantity),
+                                        static_cast<long long>(corporation.targetPrice),
+                                        corporation.breakEvenPrice);
+                            if (corporation.nearBankruptcy) {
+                                ImGui::TextColored({1.0F, 0.35F, 0.2F, 1.0F}, "LOW BALANCE");
+                            }
+                            if (corporation.unpaidMaintenanceBuildings > 0) {
+                                ImGui::TextColored({1.0F, 0.35F, 0.2F, 1.0F},
+                                                   "Unpaid maintenance: %lld building(s)",
+                                                   static_cast<long long>(corporation.unpaidMaintenanceBuildings));
+                            }
+                            ImGui::TextUnformatted("Buildings");
+                            if (corporation.buildings.empty()) {
+                                ImGui::SameLine();
+                                ImGui::TextUnformatted("(none)");
+                            }
+                            for (std::size_t buildingIndex = 0; buildingIndex < corporation.buildings.size();
+                                 ++buildingIndex) {
+                                Simulation::Economy::PlayerBuildingDetail const &building =
+                                    corporation.buildings[buildingIndex];
+                                ImGui::BulletText(
+                                    "#%zu %s: %lld/%lld workers, %.0f%% occupied, output capacity %lld, value %.2f cr",
+                                    buildingIndex,
+                                    buildingCondition(building.condition),
+                                    static_cast<long long>(building.staffedWorkers),
+                                    static_cast<long long>(building.workerCapacity),
+                                    building.occupancy * 100.0,
+                                    static_cast<long long>(building.outputCapacity),
+                                    static_cast<double>(building.constructionValue) / 100.0);
+                            }
+                            ImGui::Text("Stocks: food %.2f t | materials %.2f t | fuel %.2f t | goods %.2f t",
+                                        quantityInTons(corporation.stocks[ResourceId::Food]),
+                                        quantityInTons(corporation.stocks[ResourceId::Materials]),
+                                        quantityInTons(corporation.stocks[ResourceId::Fuel]),
+                                        quantityInTons(corporation.stocks[ResourceId::ConsumerGoods]));
+                            ImGui::TextUnformatted("Active orders");
+                            for (Simulation::Economy::PlayerOrderDetail const &order : corporation.orders) {
+                                ImGui::BulletText(
+                                    "%s %.*s: %lld @ %lld, filled %lld",
+                                    order.side == Simulation::Economy::OrderSide::Buy ? "Buy" : "Sell",
+                                    static_cast<int>(Simulation::Economy::displayName(order.resource).size()),
+                                    Simulation::Economy::displayName(order.resource).data(),
+                                    static_cast<long long>(order.quantity),
+                                    static_cast<long long>(order.price),
+                                    static_cast<long long>(order.filled));
+                            }
+                            ImGui::TreePop();
+                        }
+                    }
                     ImGui::TreePop();
                 }
             }
@@ -256,6 +355,20 @@ std::vector<EconomyWarning> deriveEconomyWarnings(PlayerRecord const &record) {
     bool const goodsUnfilled = record.buyFilled[resourceIndex(ResourceId::ConsumerGoods)] == 0;
     if (servicesDemanded && servicesUnfilled && goodsDemanded && goodsUnfilled) {
         warnings.push_back(EconomyWarning::CONSUMER_MARKET_SHORTFALL);
+    }
+    if (std::any_of(record.corporationDetails.begin(),
+                    record.corporationDetails.end(),
+                    [](Simulation::Economy::PlayerCorporationDetail const &corporation) {
+                        return corporation.unpaidMaintenanceBuildings > 0;
+                    })) {
+        warnings.push_back(EconomyWarning::UNPAID_MAINTENANCE);
+    }
+    if (std::any_of(record.corporationDetails.begin(),
+                    record.corporationDetails.end(),
+                    [](Simulation::Economy::PlayerCorporationDetail const &corporation) {
+                        return corporation.nearBankruptcy;
+                    })) {
+        warnings.push_back(EconomyWarning::BANKRUPTCY_RISK);
     }
     return warnings;
 }

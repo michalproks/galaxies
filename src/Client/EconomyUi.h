@@ -19,7 +19,12 @@ namespace Client {
 enum class PriceDirection : std::uint8_t { DOWN, UNCHANGED, UP };
 
 /** Warning states derivable from fields in the player-facing economy history. */
-enum class EconomyWarning : std::uint8_t { STARVATION_RISK, CONSUMER_MARKET_SHORTFALL };
+enum class EconomyWarning : std::uint8_t {
+    STARVATION_RISK,
+    CONSUMER_MARKET_SHORTFALL,
+    UNPAID_MAINTENANCE,
+    BANKRUPTCY_RISK
+};
 
 /** ImGui-independent values needed by the selected-colony triage summary. */
 struct EconomySummary {

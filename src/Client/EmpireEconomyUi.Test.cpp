@@ -125,6 +125,8 @@ TEST_CASE("Empire aggregations handle empty and single-record histories") {
     only.stocks[resourceIndex(ResourceId::Food)] = 250;
     only.corporationCounts[sectorIndex(SectorId::Energy)] = 2;
     only.produced[sectorIndex(SectorId::Energy)] = 700;
+    only.sectorCapacity[sectorIndex(SectorId::Energy)] = 1200;
+    only.sectorEmployment[sectorIndex(SectorId::Energy)] = 8;
     std::array<PlayerRecord, 1> const records{only};
 
     std::vector<Client::EmpireTurnSummary> const history = Client::aggregateEmpireHistory(records);
@@ -139,6 +141,6 @@ TEST_CASE("Empire aggregations handle empty and single-record histories") {
         Client::aggregateEmpireSectors(records);
     CHECK(sectors[sectorIndex(SectorId::Energy)].corporationCount == 2);
     CHECK(sectors[sectorIndex(SectorId::Energy)].output == 700);
-    CHECK(!(sectors[sectorIndex(SectorId::Energy)].capacity.has_value()));
-    CHECK(!(sectors[sectorIndex(SectorId::Energy)].employment.has_value()));
+    CHECK(sectors[sectorIndex(SectorId::Energy)].capacity == 1200);
+    CHECK(sectors[sectorIndex(SectorId::Energy)].employment == 8);
 }

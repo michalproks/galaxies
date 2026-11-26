@@ -56,7 +56,7 @@ using namespace Simulation::Economy;
 
 } // namespace
 
-TEST_CASE("Player economy records are deterministic and fixed-size") {
+TEST_CASE("Player economy records are deterministic with compact headlines") {
     using namespace Simulation::Economy;
 
     ColonyEconomy const previous = makeColony();
@@ -72,7 +72,77 @@ TEST_CASE("Player economy records are deterministic and fixed-size") {
     CHECK(firstRecord.populationChange == first.colony.totalPopulation - previous.totalPopulation);
     CHECK(firstRecord.householdCount == 1);
     CHECK(firstRecord.corporationCounts[static_cast<std::size_t>(SectorId::Food)] == 1);
+    REQUIRE(firstRecord.corporationDetails.size() == 1);
+    CHECK(firstRecord.corporationDetails.front().id == CorporationId{10});
+    CHECK(firstRecord.corporationDetails.front().plannedOutput >= 0);
+    CHECK(firstRecord.sectorCapacity[static_cast<std::size_t>(SectorId::Food)] >= 0);
     CHECK(sizeof(PlayerRecord) <= 1024);
+}
+
+TEST_CASE("Debug records retain enriched traces including empty and bounded sweep cases") {
+    using namespace Simulation::Economy;
+
+    ColonyEconomy previous;
+    previous.id = ColonyId{12};
+    previous.turnNumber = 1;
+    ColonyTickResult result = makeEmptyTickResult(previous);
+    HouseholdTickOutcome householdOutcome;
+    householdOutcome.id = HouseholdId{3};
+    householdOutcome.budget = 500;
+    householdOutcome.survivalNeed = 100;
+    householdOutcome.reserveTarget = 40;
+    householdOutcome.reserveGap = 20;
+    householdOutcome.emergencyFoodRequested = 10;
+    householdOutcome.emergencyFoodFilled = 8;
+    householdOutcome.foodBought = 90;
+    householdOutcome.foodSpent = 40;
+    householdOutcome.servicesSpent = 20;
+    householdOutcome.consumerGoodsSpent = 10;
+    householdOutcome.foodEaten = 90;
+    householdOutcome.reserveTurns = 2.5;
+    result.householdOutcomes.push_back(householdOutcome);
+    CorporationTickOutcome corporation;
+    corporation.id = CorporationId{8};
+    corporation.planning.targetPrice = 42;
+    corporation.planning.targetQuantity = 17;
+    corporation.planning.methods.push_back({BuildTier::Manual, 12.5, 0});
+    corporation.materialsConsumed = 9;
+    corporation.maintenancePaid = false;
+    corporation.unpaidMaintenanceBuildings = 1;
+    result.corporationOutcomes.push_back(corporation);
+    result.invariantResults.push_back({"credits-conserved", true});
+
+    Market market;
+    OrderBook &book = market.orderBookFor(ResourceId::Food);
+    book.sellOrders.push_back({OrderId{0}, HouseholdId{1}, OrderSide::Sell, ResourceId::Food, 1, 1});
+    for (std::int64_t index = 0; index < static_cast<std::int64_t>(MAX_MARKET_TRACE_CANDIDATES) + 6; ++index) {
+        book.buyOrders.push_back({OrderId{index + 1}, HouseholdId{2}, OrderSide::Buy, ResourceId::Food, index + 2, 1});
+    }
+    result.settlements.push_back(market.settle(ResourceId::Food));
+
+    DebugRecorder recorder(1);
+    recorder.append(previous, result);
+    REQUIRE(recorder.records().size() == 1);
+    DebugRecord const &record = recorder.records().front();
+    REQUIRE(record.householdOutcomes.size() == 1);
+    CHECK(record.householdOutcomes.front().foodSpent == 40);
+    CHECK(record.householdOutcomes.front().emergencyFoodFilled == 8);
+    REQUIRE(record.corporationOutcomes.size() == 1);
+    CHECK(record.corporationOutcomes.front().planning.targetQuantity == 17);
+    CHECK(record.corporationOutcomes.front().materialsConsumed == 9);
+    CHECK(record.corporationOutcomes.front().unpaidMaintenanceBuildings == 1);
+    REQUIRE(record.invariantResults.size() == 1);
+    CHECK(record.invariantResults.front().id == "credits-conserved");
+    REQUIRE(record.settlements.size() == 1);
+    CHECK(record.settlements.front().candidateEvaluations.size() == MAX_MARKET_TRACE_CANDIDATES);
+    CHECK(record.settlements.front().candidateEvaluations.back().price ==
+          PRICE_FLOOR + static_cast<std::int64_t>(MAX_MARKET_TRACE_CANDIDATES) - 1);
+
+    DebugRecord const empty = makeDebugRecord(previous, makeEmptyTickResult(previous));
+    CHECK(empty.householdOutcomes.empty());
+    CHECK(empty.corporationOutcomes.empty());
+    CHECK(empty.invariantResults.empty());
+    CHECK(empty.settlements.empty());
 }
 
 TEST_CASE("Debug economy records evict the oldest snapshot at the exact window boundary") {
@@ -101,6 +171,38 @@ TEST_CASE("Debug economy records evict the oldest snapshot at the exact window b
     CHECK(recorder.records().size() == 2);
     CHECK(recorder.records().front().turnNumber == 2);
     CHECK(recorder.records().back().turnNumber == 3);
+}
+
+TEST_CASE("Planning traces cap demand and staffing lists at their declared boundary") {
+    using namespace Simulation::Economy;
+
+    Corporation corporation = makeColony().corporations.front();
+    for (std::int64_t index = 0; index < static_cast<std::int64_t>(MAX_PLANNING_DEMAND_STEPS) + 1; ++index) {
+        corporation.sectorDemand.steps.emplace_back(200 - index, 100'000);
+    }
+    corporation.buildings.resize(MAX_PLANNING_STAFFING_ENTRIES + 1,
+                                 Building{SectorId::Food, BuildTier::Tier1, 0, false, 1'000});
+    CorporationPrices prices;
+    prices.inputs = {40.0, 6.0, 15.0, 10.0};
+    prices.output = 4;
+
+    CorporationPlan const plan = planCorporation(corporation, prices);
+
+    CHECK(plan.diagnostic.demandSteps.size() == MAX_PLANNING_DEMAND_STEPS);
+    CHECK(plan.diagnostic.demandStepsTruncated);
+    CHECK(plan.diagnostic.staffing.size() == MAX_PLANNING_STAFFING_ENTRIES);
+    CHECK(plan.diagnostic.staffingTruncated);
+
+    ColonyEconomy previous;
+    ColonyTickResult result = makeEmptyTickResult(previous);
+    CorporationTickOutcome outcome;
+    outcome.id = corporation.id;
+    outcome.planning = plan.diagnostic;
+    result.corporationOutcomes.push_back(outcome);
+    DebugRecord const record = makeDebugRecord(previous, result);
+    REQUIRE(record.corporationOutcomes.size() == 1);
+    CHECK(record.corporationOutcomes.front().planning.demandSteps.size() == MAX_PLANNING_DEMAND_STEPS);
+    CHECK(record.corporationOutcomes.front().planning.staffing.size() == MAX_PLANNING_STAFFING_ENTRIES);
 }
 
 TEST_CASE("Player and debug economy record streams are independent") {

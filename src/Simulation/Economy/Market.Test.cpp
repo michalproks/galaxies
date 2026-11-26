@@ -15,6 +15,7 @@ using Simulation::Economy::AgentRef;
 using Simulation::Economy::CorporationId;
 using Simulation::Economy::HouseholdId;
 using Simulation::Economy::Market;
+using Simulation::Economy::MarketCandidateEvaluation;
 using Simulation::Economy::Order;
 using Simulation::Economy::OrderId;
 using Simulation::Economy::OrderSide;
@@ -42,8 +43,20 @@ Market makeInvariantMarket() {
 
 bool sameOutcome(SettlementOutcome const &left, SettlementOutcome const &right) {
     if (left.resource != right.resource || left.price != right.price || left.tradedQuantity != right.tradedQuantity ||
-        left.trades.size() != right.trades.size()) {
+        left.trades.size() != right.trades.size() ||
+        left.candidateEvaluations.size() != right.candidateEvaluations.size() ||
+        left.maximizingPriceLow != right.maximizingPriceLow || left.maximizingPriceHigh != right.maximizingPriceHigh ||
+        left.priorPrice != right.priorPrice || left.priceChoice != right.priceChoice) {
         return false;
+    }
+    for (std::size_t index = 0; index < left.candidateEvaluations.size(); ++index) {
+        MarketCandidateEvaluation const &leftCandidate = left.candidateEvaluations[index];
+        MarketCandidateEvaluation const &rightCandidate = right.candidateEvaluations[index];
+        if (leftCandidate.price != rightCandidate.price || leftCandidate.supply != rightCandidate.supply ||
+            leftCandidate.demand != rightCandidate.demand ||
+            leftCandidate.tradedQuantity != rightCandidate.tradedQuantity) {
+            return false;
+        }
     }
     for (std::size_t index = 0; index < left.trades.size(); ++index) {
         Trade const &leftTrade = left.trades[index];

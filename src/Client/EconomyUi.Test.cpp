@@ -52,16 +52,21 @@ TEST_CASE("Economy summary classifies price changes and derives supported warnin
 
     PlayerRecord value = record(5);
     value.householdsBelowOneFoodReserveTurn = 2;
+    value.corporationDetails.push_back({});
+    value.corporationDetails.back().unpaidMaintenanceBuildings = 1;
+    value.corporationDetails.back().nearBankruptcy = true;
     value.buyDemand[static_cast<std::size_t>(ResourceId::Service)] = 7;
     value.buyDemand[static_cast<std::size_t>(ResourceId::ConsumerGoods)] = 2;
     std::vector<Client::EconomyWarning> const warnings = Client::deriveEconomyWarnings(value);
 
-    REQUIRE(warnings.size() == 2);
+    REQUIRE(warnings.size() == 4);
     CHECK(warnings[0] == Client::EconomyWarning::STARVATION_RISK);
     CHECK(warnings[1] == Client::EconomyWarning::CONSUMER_MARKET_SHORTFALL);
+    CHECK(warnings[2] == Client::EconomyWarning::UNPAID_MAINTENANCE);
+    CHECK(warnings[3] == Client::EconomyWarning::BANKRUPTCY_RISK);
 
     value.buyFilled[static_cast<std::size_t>(ResourceId::Service)] = 7;
-    CHECK(Client::deriveEconomyWarnings(value).size() == 1);
+    CHECK(Client::deriveEconomyWarnings(value).size() == 3);
 }
 
 TEST_CASE("Economy chart mapping preserves turns and produces all six player trend groups") {

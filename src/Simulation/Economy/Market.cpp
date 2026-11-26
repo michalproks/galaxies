@@ -137,7 +137,10 @@ std::int64_t Market::lastPriceFor(ResourceId const resource) const noexcept {
 
 SettlementOutcome Market::settle(ResourceId const resource) {
     std::int64_t const previousPrice = lastPriceFor(resource);
-    SettlementOutcome outcome{resource, previousPrice, 0, {}};
+    SettlementOutcome outcome;
+    outcome.resource = resource;
+    outcome.price = previousPrice;
+    outcome.priorPrice = previousPrice;
     OrderBook const *const book = findOrderBook(resource);
     if (book == nullptr) {
         return outcome;
@@ -167,6 +170,7 @@ SettlementOutcome Market::settle(ResourceId const resource) {
 
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    outcome.candidateEvaluations.reserve(std::min(candidates.size(), MAX_MARKET_TRACE_CANDIDATES));
     std::sort(sellers.begin(), sellers.end(), [](Order const *const left, Order const *const right) {
         if (left->price != right->price) {
             return left->price < right->price;
@@ -201,6 +205,9 @@ SettlementOutcome Market::settle(ResourceId const resource) {
             ++buyerIndex;
         }
         std::int64_t const traded = std::min(supply, demand);
+        if (outcome.candidateEvaluations.size() < MAX_MARKET_TRACE_CANDIDATES) {
+            outcome.candidateEvaluations.push_back({candidate, supply, demand, traded});
+        }
         if (!hasMaximum || traded > maximumQuantity) {
             maximumQuantity = traded;
             lowestMaximizingPrice = candidate;
@@ -213,10 +220,15 @@ SettlementOutcome Market::settle(ResourceId const resource) {
     if (maximumQuantity == 0) {
         return outcome;
     }
+    outcome.maximizingPriceLow = lowestMaximizingPrice;
+    outcome.maximizingPriceHigh = highestMaximizingPrice;
 
     // Q(p) is constant between adjacent candidate prices, so the prior price may itself
     // be a maximizer even when it is not one of the submitted order prices.
     std::int64_t const settlementPrice = std::clamp(previousPrice, lowestMaximizingPrice, highestMaximizingPrice);
+    outcome.priceChoice = settlementPrice == previousPrice           ? SettlementPriceChoice::PRIOR_PRICE
+                          : settlementPrice == lowestMaximizingPrice ? SettlementPriceChoice::LOWEST_MAXIMIZER
+                                                                     : SettlementPriceChoice::HIGHEST_MAXIMIZER;
     std::vector<Order const *> eligibleBuyers;
     std::vector<Order const *> eligibleSellers;
     std::int64_t eligibleDemand = 0;

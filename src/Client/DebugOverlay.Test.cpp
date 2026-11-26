@@ -68,7 +68,10 @@ TEST_CASE("Invariant badges derive failures from retained colony state") {
     DebugRecord value = record({3, 10});
     value.afterState.households.front().credits = 11;
     value.afterState.households.front().foodStock = 5;
-    value.settlements.push_back({Simulation::Economy::ResourceId::Food, Simulation::Economy::PRICE_CAP + 1, 0, {}});
+    Simulation::Economy::SettlementOutcome invalidPrice;
+    invalidPrice.resource = Simulation::Economy::ResourceId::Food;
+    invalidPrice.price = Simulation::Economy::PRICE_CAP + 1;
+    value.settlements.push_back(invalidPrice);
     auto const badges = Client::deriveInvariantBadges(value);
     CHECK(badge(badges, "Credits conserved").state == Client::InvariantState::FAIL);
     CHECK(badge(badges, "Standard resources conserved").state == Client::InvariantState::FAIL);
@@ -81,6 +84,16 @@ TEST_CASE("Invariant badges derive failures from retained colony state") {
           Client::InvariantState::UNAVAILABLE);
     value.afterState.households.front().credits = -1;
     CHECK(badge(Client::deriveInvariantBadges(value), "No agent overspent").state == Client::InvariantState::FAIL);
+}
+
+TEST_CASE("Invariant badges prefer explicit tick evaluations") {
+    DebugRecord value = record({2, 10});
+    value.invariantResults.push_back({"credits-conserved", true});
+    value.invariantResults.push_back({"agent-balances-nonnegative", false});
+    auto const badges = Client::deriveInvariantBadges(value);
+    CHECK(badges.size() == 2);
+    CHECK(badge(badges, "Credits conserved").state == Client::InvariantState::PASS);
+    CHECK(badge(badges, "No agent overspent").state == Client::InvariantState::FAIL);
 }
 
 TEST_CASE("Debug record diff counts fields and preserves pipeline stage grouping") {

@@ -11,7 +11,61 @@
 
 namespace Simulation::Economy {
 
-/** Fixed-size player-facing summary for one committed colony turn. */
+/** Player-visible condition of one corporation-owned building at turn end. */
+enum class PlayerBuildingCondition : std::uint8_t { OPERATIONAL, IDLE, UNDER_CONSTRUCTION, MAINTENANCE_UNPAID };
+
+struct PlayerBuildingDetail {
+    BuildTier tier{BuildTier::Manual};
+    std::int64_t staffedWorkers{};
+    std::int64_t workerCapacity{};
+    std::int64_t outputCapacity{};
+    std::int64_t constructionValue{};
+    PlayerBuildingCondition condition{PlayerBuildingCondition::OPERATIONAL};
+    double occupancy{};
+    bool operator==(PlayerBuildingDetail const &) const = default;
+};
+
+struct PlayerOrderDetail {
+    OrderId id{};
+    ResourceId resource{ResourceId::Credits};
+    OrderSide side{OrderSide::Buy};
+    std::int64_t price{};
+    std::int64_t quantity{};
+    std::int64_t filled{};
+    bool operator==(PlayerOrderDetail const &) const = default;
+};
+
+/** Compact player-facing detail for one corporation in a completed turn. */
+struct PlayerCorporationDetail {
+    CorporationId id{};
+    HouseholdId owner{};
+    SectorId sector{SectorId::Food};
+    std::int64_t credits{};
+    std::int64_t creditChange{};
+    std::int64_t plannedOutput{};
+    std::int64_t actualOutput{};
+    std::int64_t sold{};
+    std::int64_t plannedCost{};
+    std::int64_t targetPrice{};
+    std::int64_t targetQuantity{};
+    double breakEvenPrice{};
+    ResourceAmounts stocks{};
+    std::vector<PlayerBuildingDetail> buildings;
+    std::vector<PlayerOrderDetail> orders;
+    std::int64_t unpaidMaintenanceBuildings{};
+    bool nearBankruptcy{};
+    bool operator==(PlayerCorporationDetail const &other) const {
+        return id == other.id && owner == other.owner && sector == other.sector && credits == other.credits &&
+               creditChange == other.creditChange && plannedOutput == other.plannedOutput &&
+               actualOutput == other.actualOutput && sold == other.sold && plannedCost == other.plannedCost &&
+               targetPrice == other.targetPrice && targetQuantity == other.targetQuantity &&
+               breakEvenPrice == other.breakEvenPrice && stocks.amounts == other.stocks.amounts &&
+               buildings == other.buildings && orders == other.orders &&
+               unpaidMaintenanceBuildings == other.unpaidMaintenanceBuildings && nearBankruptcy == other.nearBankruptcy;
+    }
+};
+
+/** Compact player-facing summary plus expandable corporation details for one colony turn. */
 struct PlayerRecord {
     /** Colony and completed-turn identity. */
     ColonyId colonyId{};
@@ -27,6 +81,9 @@ struct PlayerRecord {
     std::array<std::int64_t, SECTOR_COUNT> corporationCounts{};
     std::array<std::int64_t, SECTOR_COUNT> produced{};
     std::array<std::int64_t, SECTOR_COUNT> sold{};
+    /** Per-sector rated output capacity and actual corporate labour employment. */
+    std::array<std::int64_t, SECTOR_COUNT> sectorCapacity{};
+    std::array<std::int64_t, SECTOR_COUNT> sectorEmployment{};
     /** Colony population and net change across the completed turn. */
     std::int64_t population{};
     std::int64_t populationChange{};
@@ -45,12 +102,14 @@ struct PlayerRecord {
     /** Household labour offers and the quantity employed at settlement. */
     std::int64_t labourSupplied{};
     std::int64_t labourEmployed{};
-    /** Fixed event counters; no per-agent or order-level detail is retained here. */
+    /** Fixed event counters; household- and order-level diagnostics remain debug-only. */
     std::array<std::int64_t, SECTOR_COUNT> corporationsFounded{};
     std::int64_t corporationsDissolved{};
     std::int64_t householdsDissolved{};
+    /** Expandable corporation details; kept separate from the compact headline fields. */
+    std::vector<PlayerCorporationDetail> corporationDetails;
 
-    /** Compares the complete fixed player contract. */
+    /** Compares the complete player-facing record, including expandable corporation details. */
     bool operator==(PlayerRecord const &) const = default;
 };
 
@@ -75,6 +134,10 @@ struct DebugRecord { // NOLINT(bugprone-exception-escape)
     std::vector<HouseholdTickDelta> householdDeltas;
     std::vector<CorporationTickDelta> corporationDeltas;
     std::int64_t liquidationCredits{};
+    std::vector<HouseholdTickOutcome> householdOutcomes;
+    std::vector<CorporationTickOutcome> corporationOutcomes;
+    std::vector<EconomyInvariantResult> invariantResults;
+    std::array<std::int64_t, RESOURCE_COUNT> liquidatedResources{};
 };
 
 /** Creates an independent debug snapshot from a tick result. */
@@ -82,6 +145,8 @@ struct DebugRecord { // NOLINT(bugprone-exception-escape)
 
 /** Default diagnostic rolling-window size when the visualization spec leaves N tunable. */
 inline constexpr std::size_t DEFAULT_DEBUG_RECORD_WINDOW = 50;
+/** Player warning threshold for corporations with a critically low operating balance. */
+inline constexpr std::int64_t PLAYER_BANKRUPTCY_WARNING_CREDITS = 10'000;
 
 /** Bounded in-memory debug record stream with an optional zero-work disabled path. */
 class DebugRecorder {

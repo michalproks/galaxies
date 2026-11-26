@@ -1,6 +1,7 @@
 ﻿#include "EconomyRecords.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 
@@ -100,6 +101,93 @@ PlayerRecord makePlayerRecord(ColonyEconomy const &previous, ColonyTickResult co
         std::size_t const index = sectorIndex(corporation.sector);
         record.corporationCounts[index] = checkedAdd(record.corporationCounts[index], 1);
         record.corporationCredits = checkedAdd(record.corporationCredits, corporation.credits);
+
+        PlayerCorporationDetail detail;
+        detail.id = corporation.id;
+        detail.owner = corporation.owner;
+        detail.sector = corporation.sector;
+        detail.credits = corporation.credits;
+        detail.stocks = corporation.stock;
+        detail.nearBankruptcy = corporation.credits < PLAYER_BANKRUPTCY_WARNING_CREDITS;
+        auto const delta = std::find_if(
+            result.corporationDeltas.begin(),
+            result.corporationDeltas.end(),
+            [&corporation](CorporationTickDelta const &candidate) { return candidate.id == corporation.id; });
+        if (delta != result.corporationDeltas.end()) {
+            detail.creditChange = delta->credits;
+            detail.actualOutput = delta->produced;
+            detail.sold = delta->sold;
+        }
+        auto const outcome = std::find_if(
+            result.corporationOutcomes.begin(),
+            result.corporationOutcomes.end(),
+            [&corporation](CorporationTickOutcome const &candidate) { return candidate.id == corporation.id; });
+        if (outcome != result.corporationOutcomes.end()) {
+            detail.plannedOutput = outcome->planning.plannedOutput;
+            detail.plannedCost = outcome->planning.plannedCost;
+            detail.targetPrice = outcome->planning.targetPrice;
+            detail.targetQuantity = outcome->planning.targetQuantity;
+            detail.breakEvenPrice = outcome->planning.breakEvenPrice;
+            detail.unpaidMaintenanceBuildings = outcome->unpaidMaintenanceBuildings;
+        }
+        for (Building const &building : corporation.buildings) {
+            PlayerBuildingDetail buildingDetail;
+            buildingDetail.tier = building.tier;
+            buildingDetail.staffedWorkers = building.staffedWorkers;
+            buildingDetail.constructionValue = building.constructionValue;
+            buildingDetail.condition = building.underConstruction     ? PlayerBuildingCondition::UNDER_CONSTRUCTION
+                                       : building.staffedWorkers == 0 ? PlayerBuildingCondition::IDLE
+                                                                      : PlayerBuildingCondition::OPERATIONAL;
+            auto const methods = availableMethods(building.sector);
+            auto const definition = std::find_if(methods.begin(), methods.end(), [&building](BuildingDef const &item) {
+                return item.tier == building.tier;
+            });
+            if (definition != methods.end()) {
+                buildingDetail.workerCapacity = definition->capacity;
+                buildingDetail.outputCapacity = static_cast<std::int64_t>(
+                    std::floor(static_cast<double>(definition->capacity) *
+                               static_cast<double>(definition->outputPerManualWorker) * definition->rateMultiplier));
+                if (definition->capacity > 0) {
+                    buildingDetail.occupancy = std::clamp(static_cast<double>(building.staffedWorkers) /
+                                                              static_cast<double>(definition->capacity),
+                                                          0.0,
+                                                          1.0);
+                }
+                record.sectorCapacity[index] = checkedAdd(record.sectorCapacity[index], buildingDetail.outputCapacity);
+            }
+            detail.buildings.push_back(buildingDetail);
+        }
+        for (auto const &[resource, book] : result.colony.market.orderBooks) {
+            for (Order const &order : book.buyOrders) {
+                if (order.owner == AgentRef{corporation.id}) {
+                    detail.orders.push_back({order.id, resource, order.side, order.price, order.quantity, 0});
+                }
+            }
+            for (Order const &order : book.sellOrders) {
+                if (order.owner == AgentRef{corporation.id}) {
+                    detail.orders.push_back({order.id, resource, order.side, order.price, order.quantity, 0});
+                }
+            }
+        }
+        for (PlayerOrderDetail &order : detail.orders) {
+            for (SettlementOutcome const &settlement : result.settlements) {
+                if (settlement.resource != order.resource) {
+                    continue;
+                }
+                for (Trade const &trade : settlement.trades) {
+                    if (trade.orderId == order.id) {
+                        order.filled = checkedAdd(order.filled, trade.quantity);
+                    }
+                }
+            }
+            if (order.resource == ResourceId::Labour && order.side == OrderSide::Buy) {
+                record.sectorEmployment[index] = checkedAdd(record.sectorEmployment[index], order.filled);
+            }
+        }
+        std::sort(detail.orders.begin(),
+                  detail.orders.end(),
+                  [](PlayerOrderDetail const &left, PlayerOrderDetail const &right) { return left.id < right.id; });
+        record.corporationDetails.push_back(std::move(detail));
     }
 
     for (HouseholdTickDelta const &delta : result.householdDeltas) {
@@ -157,6 +245,10 @@ DebugRecord makeDebugRecord(ColonyEconomy const &previous, ColonyTickResult cons
     record.householdDeltas = result.householdDeltas;
     record.corporationDeltas = result.corporationDeltas;
     record.liquidationCredits = result.liquidationCredits;
+    record.householdOutcomes = result.householdOutcomes;
+    record.corporationOutcomes = result.corporationOutcomes;
+    record.invariantResults = result.invariantResults;
+    record.liquidatedResources = result.liquidatedResources;
     return record;
 }
 

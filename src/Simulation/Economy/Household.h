@@ -93,6 +93,10 @@ struct HouseholdOrderPlan {
     std::int64_t consumerGoodsShare{};
     /** Subsistence reservation wage, rounded up to whole centicredits. */
     std::int64_t subsistenceWage{};
+    /** Desired food reserve stock and the remaining quantity gap after current stock. */
+    std::int64_t reserveTarget{};
+    std::int64_t reserveGap{};
+    OrderId emergencyFoodOrderId{};
 };
 
 /** A resource fill and its settlement price, with quantity measured in that resource. */
@@ -131,6 +135,10 @@ struct HouseholdTurnResult {
     std::int64_t income{};
     /** True when the updated population is below POP_MIN. The caller dissolves its corporation first. */
     bool dissolved{};
+    /** Actual spending by category, after applying settlement fills. */
+    std::int64_t foodSpent{};
+    std::int64_t servicesSpent{};
+    std::int64_t consumerGoodsSpent{};
 };
 
 /**

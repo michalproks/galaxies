@@ -1,6 +1,7 @@
 #include "DebugOverlay.h"
 
 #include "Client.h"
+#include "EconomyUi.h"
 #include <Economy/EconomyConstants.h>
 #include <imgui.h>
 
@@ -63,6 +64,19 @@ namespace {
             return "Tier 2";
         }
         return "Unknown";
+    }
+    [[nodiscard]] char const *priceChoiceText(SettlementPriceChoice choice) noexcept {
+        switch (choice) {
+        case SettlementPriceChoice::NO_TRADE:
+            return "no trade";
+        case SettlementPriceChoice::PRIOR_PRICE:
+            return "prior price";
+        case SettlementPriceChoice::LOWEST_MAXIMIZER:
+            return "lowest maximizer";
+        case SettlementPriceChoice::HIGHEST_MAXIMIZER:
+            return "highest maximizer";
+        }
+        return "unknown";
     }
     [[nodiscard]] std::string ownerText(AgentRef const &owner) {
         if (auto const *household = std::get_if<HouseholdId>(&owner)) {
@@ -168,6 +182,18 @@ namespace {
             std::string const key = "settlement." + std::string(displayName(s.resource)) + ".";
             add(fields, "Settlement", key + "price", s.price);
             add(fields, "Settlement", key + "traded-quantity", s.tradedQuantity);
+            add(fields, "Settlement sweep", key + "prior-price", s.priorPrice);
+            add(fields, "Settlement sweep", key + "maximizer-low", s.maximizingPriceLow);
+            add(fields, "Settlement sweep", key + "maximizer-high", s.maximizingPriceHigh);
+            add(fields, "Settlement sweep", key + "price-choice", static_cast<std::int64_t>(s.priceChoice));
+            for (std::size_t index = 0; index < s.candidateEvaluations.size(); ++index) {
+                MarketCandidateEvaluation const &candidate = s.candidateEvaluations[index];
+                std::string const candidateKey = key + "candidate." + text(index) + ".";
+                add(fields, "Settlement sweep", candidateKey + "price", candidate.price);
+                add(fields, "Settlement sweep", candidateKey + "supply", candidate.supply);
+                add(fields, "Settlement sweep", candidateKey + "demand", candidate.demand);
+                add(fields, "Settlement sweep", candidateKey + "traded", candidate.tradedQuantity);
+            }
             for (Trade const &trade : s.trades) {
                 std::string const t = key + "trade." + text(trade.orderId.value) + ".";
                 add(fields, "Settlement", t + "owner", ownerText(trade.owner));
@@ -190,6 +216,66 @@ namespace {
             add(fields, "Agent flows", k + "credits", d.credits);
             add(fields, "Agent flows", k + "produced", d.produced);
             add(fields, "Agent flows", k + "sold", d.sold);
+        }
+        for (HouseholdTickOutcome const &outcome : record.householdOutcomes) {
+            std::string const key = "household-outcome." + text(outcome.id.value) + ".";
+            add(fields, "Household outcomes", key + "budget", outcome.budget);
+            add(fields, "Household outcomes", key + "survival-need", outcome.survivalNeed);
+            add(fields, "Household outcomes", key + "reserve-target", outcome.reserveTarget);
+            add(fields, "Household outcomes", key + "reserve-gap", outcome.reserveGap);
+            add(fields, "Household outcomes", key + "emergency-requested", outcome.emergencyFoodRequested);
+            add(fields, "Household outcomes", key + "emergency-filled", outcome.emergencyFoodFilled);
+            add(fields, "Household outcomes", key + "food-bought", outcome.foodBought);
+            add(fields, "Household outcomes", key + "food-share", outcome.foodShare);
+            add(fields, "Household outcomes", key + "services-share", outcome.servicesShare);
+            add(fields, "Household outcomes", key + "goods-share", outcome.consumerGoodsShare);
+            add(fields, "Household outcomes", key + "consumption-target", outcome.consumptionTarget);
+            add(fields, "Household outcomes", key + "food-spent", outcome.foodSpent);
+            add(fields, "Household outcomes", key + "services-spent", outcome.servicesSpent);
+            add(fields, "Household outcomes", key + "goods-spent", outcome.consumerGoodsSpent);
+            add(fields, "Household outcomes", key + "food-eaten", outcome.foodEaten);
+            add(fields, "Household outcomes", key + "reserve-turns", outcome.reserveTurns);
+            add(fields, "Household outcomes", key + "emergency", outcome.emergencyMode);
+        }
+        for (CorporationTickOutcome const &outcome : record.corporationOutcomes) {
+            std::string const key = "corporation-outcome." + text(outcome.id.value) + ".";
+            add(fields, "Corporation outcomes", key + "materials-consumed", outcome.materialsConsumed);
+            add(fields, "Corporation outcomes", key + "fuel-consumed", outcome.fuelConsumed);
+            add(fields, "Corporation outcomes", key + "maintenance-paid", outcome.maintenancePaid);
+            add(fields, "Corporation outcomes", key + "unpaid-buildings", outcome.unpaidMaintenanceBuildings);
+            add(fields, "Planning", key + "target-price", outcome.planning.targetPrice);
+            add(fields, "Planning", key + "target-quantity", outcome.planning.targetQuantity);
+            add(fields, "Planning", key + "budget", outcome.planning.budget);
+            add(fields, "Planning", key + "planned-output", outcome.planning.plannedOutput);
+            add(fields, "Planning", key + "planned-cost", outcome.planning.plannedCost);
+            add(fields, "Planning", key + "idle-capacity", outcome.planning.idleOutputCapacity);
+            add(fields, "Planning", key + "break-even", outcome.planning.breakEvenPrice);
+            add(fields, "Planning", key + "surplus", outcome.planning.surplusDecision);
+            add(fields, "Planning", key + "construction-gate", outcome.planning.constructionGatePassed);
+            add(fields, "Planning", key + "budget-clamp", outcome.planning.budgetClampFired);
+            add(fields, "Planning", key + "demand-truncated", outcome.planning.demandStepsTruncated);
+            add(fields, "Planning", key + "staffing-truncated", outcome.planning.staffingTruncated);
+            for (std::size_t index = 0; index < outcome.planning.methods.size(); ++index) {
+                CorporationMethodDiagnostic const &method = outcome.planning.methods[index];
+                std::string const methodKey = key + "method." + text(index) + ".";
+                add(fields, "Planning", methodKey + "tier", static_cast<std::int64_t>(method.tier));
+                add(fields, "Planning", methodKey + "unit-cost", method.unitCost);
+                add(fields, "Planning", methodKey + "capacity", method.outputCapacity);
+            }
+            for (std::size_t index = 0; index < outcome.planning.demandSteps.size(); ++index) {
+                std::string const demandKey = key + "demand." + text(index) + ".";
+                add(fields, "Planning", demandKey + "price", outcome.planning.demandSteps[index].first);
+                add(fields, "Planning", demandKey + "quantity", outcome.planning.demandSteps[index].second);
+            }
+            for (BuildingStaffing const &staffing : outcome.planning.staffing) {
+                add(fields, "Planning", key + "staffing." + text(staffing.buildingIndex), staffing.workers);
+            }
+        }
+        for (EconomyInvariantResult const &invariant : record.invariantResults) {
+            add(fields, "Invariants", "invariant." + invariant.id, invariant.passed);
+        }
+        for (std::size_t index = 0; index < RESOURCE_COUNT; ++index) {
+            add(fields, "Liquidation", "liquidated-stock." + std::to_string(index), record.liquidatedResources[index]);
         }
         for (FoundedCorporation const &f : record.founded) {
             std::string const k = "founded." + text(f.householdId.value) + ".";
@@ -416,11 +502,32 @@ namespace {
         for (Household const &h : state.households) {
             std::string const label = "Household " + text(h.id.value) + " details";
             if (ImGui::TreeNode(label.c_str())) {
-                double const survivalNeed = static_cast<double>(h.population) * static_cast<double>(FOOD_PER_PERSON);
-                double const reserveTurns = survivalNeed > 0.0 ? static_cast<double>(h.foodStock) / survivalNeed : 0.0;
-                ImGui::Text("Derived reserve turns %.3f | derived emergency (<1 turn): %s",
-                            reserveTurns,
-                            reserveTurns < 1.0 ? "yes" : "no");
+                auto const outcome = std::find_if(record.householdOutcomes.begin(),
+                                                  record.householdOutcomes.end(),
+                                                  [&h](HouseholdTickOutcome const &item) { return item.id == h.id; });
+                if (outcome != record.householdOutcomes.end()) {
+                    ImGui::Text("Budget %lld | survival need %lld | target %lld | reserve target %lld (gap %lld) | "
+                                "reserve %.3f turns | emergency: %s",
+                                static_cast<long long>(outcome->budget),
+                                static_cast<long long>(outcome->survivalNeed),
+                                static_cast<long long>(outcome->consumptionTarget),
+                                static_cast<long long>(outcome->reserveTarget),
+                                static_cast<long long>(outcome->reserveGap),
+                                outcome->reserveTurns,
+                                outcome->emergencyMode ? "yes" : "no");
+                    ImGui::Text("Shares: food %lld | services %lld | goods %lld | emergency food %lld requested / "
+                                "%lld filled (%lld total food bought)",
+                                static_cast<long long>(outcome->foodShare),
+                                static_cast<long long>(outcome->servicesShare),
+                                static_cast<long long>(outcome->consumerGoodsShare),
+                                static_cast<long long>(outcome->emergencyFoodRequested),
+                                static_cast<long long>(outcome->emergencyFoodFilled),
+                                static_cast<long long>(outcome->foodBought));
+                    ImGui::Text("Spent: food %lld | services %lld | consumer goods %lld",
+                                static_cast<long long>(outcome->foodSpent),
+                                static_cast<long long>(outcome->servicesSpent),
+                                static_cast<long long>(outcome->consumerGoodsSpent));
+                }
                 ImGui::Text(
                     "Beliefs: food %.2f +/- %.2f; labour %.2f +/- %.2f; service %.2f +/- %.2f; goods %.2f +/- %.2f",
                     h.foodBelief.mean,
@@ -454,8 +561,6 @@ namespace {
                 ImGui::TreePop();
             }
         }
-        ImGui::TextUnformatted(
-            "Missing: per-category spending and foodEaten source breakdown; reserve/emergency values are derived.");
         if (ImGui::BeginTable("corporation-ledger",
                               7,
                               static_cast<ImGuiTableFlags>(combinedFlags(
@@ -517,8 +622,14 @@ namespace {
                 ImGui::TreePop();
             }
         }
-        ImGui::TextUnformatted(
-            "Not retained: maintenance-paid result; recorded staffing is the final staffed/idle state.");
+        for (CorporationTickOutcome const &outcome : record.corporationOutcomes) {
+            ImGui::Text("Corp %lld materials consumed %lld | fuel consumed %lld | maintenance %s (%lld unpaid)",
+                        static_cast<long long>(outcome.id.value),
+                        static_cast<long long>(outcome.materialsConsumed),
+                        static_cast<long long>(outcome.fuelConsumed),
+                        outcome.maintenancePaid ? "paid" : "unpaid",
+                        static_cast<long long>(outcome.unpaidMaintenanceBuildings));
+        }
         ImGui::Separator();
         if (ImGui::Button("Compare recorded turns"))
             showDiff = true;
@@ -597,8 +708,33 @@ namespace {
                 ImGui::EndTable();
             }
         }
-        ImGui::TextUnformatted(
-            "Not retained: Qs(p), Qd(p), Q(p) candidate sweep, maximiser interval, or tie-break trace.");
+        if (settlement != record.settlements.end()) {
+            ImGui::Text("Maximizer interval [%lld, %lld] | prior %lld | choice %s",
+                        static_cast<long long>(settlement->maximizingPriceLow),
+                        static_cast<long long>(settlement->maximizingPriceHigh),
+                        static_cast<long long>(settlement->priorPrice),
+                        priceChoiceText(settlement->priceChoice));
+            if (ImGui::BeginTable(
+                    "market-candidate-sweep",
+                    4,
+                    static_cast<ImGuiTableFlags>(combinedFlags(ImGuiTableFlags_Borders, ImGuiTableFlags_RowBg)))) {
+                for (char const *label : {"Candidate price", "Qs(p)", "Qd(p)", "Q(p)"})
+                    ImGui::TableSetupColumn(label);
+                ImGui::TableHeadersRow();
+                for (MarketCandidateEvaluation const &candidate : settlement->candidateEvaluations) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%lld", static_cast<long long>(candidate.price));
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%lld", static_cast<long long>(candidate.supply));
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%lld", static_cast<long long>(candidate.demand));
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%lld", static_cast<long long>(candidate.tradedQuantity));
+                }
+                ImGui::EndTable();
+            }
+        }
         ImGui::End();
     }
 
@@ -634,8 +770,13 @@ namespace {
             selected = corporations.begin() + index;
         }
         Corporation const &corporation = *selected;
+        auto const trace = std::find_if(
+            record.corporationOutcomes.begin(),
+            record.corporationOutcomes.end(),
+            [&corporation](CorporationTickOutcome const &outcome) { return outcome.id == corporation.id; });
         ImGui::Text("Recorded demand steps %zu | stock unit cost %.3f | break-even %.3f",
-                    corporation.sectorDemand.steps.size(),
+                    trace == record.corporationOutcomes.end() ? corporation.sectorDemand.steps.size()
+                                                              : trace->planning.demandSteps.size(),
                     corporation.stockUnitCost,
                     corporation.breakEvenPrice);
         ImGui::Text("Last output %lld | last income %lld | buildings %zu",
@@ -649,7 +790,10 @@ namespace {
             ImGui::TableSetupColumn("Demand price");
             ImGui::TableSetupColumn("Quantity");
             ImGui::TableHeadersRow();
-            for (auto const &[price, quantity] : corporation.sectorDemand.steps) {
+            std::vector<std::pair<std::int64_t, std::int64_t>> const &demandSteps =
+                trace == record.corporationOutcomes.end() ? corporation.sectorDemand.steps
+                                                          : trace->planning.demandSteps;
+            for (auto const &[price, quantity] : demandSteps) {
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
                 ImGui::Text("%lld", static_cast<long long>(price));
@@ -658,9 +802,55 @@ namespace {
             }
             ImGui::EndTable();
         }
-        ImGui::TextUnformatted("Not retained: p*/Q*, unit cost per method, planned budget, staffing order, idle "
-                               "capacity, surplus, construction gate, budget-clamp flag.");
-        ImGui::TextUnformatted("Saved demand curve and state only; the planner is never re-run by this reader.");
+        if (trace != record.corporationOutcomes.end()) {
+            CorporationPlanDiagnostic const &planning = trace->planning;
+            ImGui::Text("Target p* %lld / Q* %lld | profit %.3f | break-even %.3f",
+                        static_cast<long long>(planning.targetPrice),
+                        static_cast<long long>(planning.targetQuantity),
+                        planning.targetProfit,
+                        planning.breakEvenPrice);
+            ImGui::Text("Budget %lld | planned output %lld | idle capacity %lld | planned cost %lld",
+                        static_cast<long long>(planning.budget),
+                        static_cast<long long>(planning.plannedOutput),
+                        static_cast<long long>(planning.idleOutputCapacity),
+                        static_cast<long long>(planning.plannedCost));
+            ImGui::Text("Maintenance labour %lld | materials %lld | surplus %s | construction gate %s | budget "
+                        "clamp %s",
+                        static_cast<long long>(planning.maintenanceLabour),
+                        static_cast<long long>(planning.maintenanceMaterials),
+                        planning.surplusDecision ? "yes" : "no",
+                        planning.constructionGatePassed ? "passed" : "not passed",
+                        planning.budgetClampFired ? "fired" : "not fired");
+            if (ImGui::BeginTable(
+                    "planning-method-costs",
+                    3,
+                    static_cast<ImGuiTableFlags>(combinedFlags(ImGuiTableFlags_Borders, ImGuiTableFlags_RowBg)))) {
+                for (char const *label : {"Method", "Unit cost", "Output capacity"})
+                    ImGui::TableSetupColumn(label);
+                ImGui::TableHeadersRow();
+                for (CorporationMethodDiagnostic const &method : planning.methods) {
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(tierText(method.tier).c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.3f", method.unitCost);
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%lld", static_cast<long long>(method.outputCapacity));
+                }
+                ImGui::EndTable();
+            }
+            for (BuildingStaffing const &staffing : planning.staffing) {
+                ImGui::Text("Building %zu staffing decision: %lld workers",
+                            staffing.buildingIndex,
+                            static_cast<long long>(staffing.workers));
+            }
+            if (planning.demandStepsTruncated || planning.staffingTruncated) {
+                ImGui::Text("Trace bounded: demand steps %s | staffing entries %s",
+                            planning.demandStepsTruncated ? "truncated" : "complete",
+                            planning.staffingTruncated ? "truncated" : "complete");
+            }
+        }
+        ImGui::TextUnformatted("Saved planning outputs; the planner is never re-run by this reader.");
         ImGui::End();
     }
 
@@ -733,6 +923,27 @@ Simulation::Economy::DebugRecord const *debugRecordAtTurn(DebugRecordQuery query
 
 std::vector<InvariantBadge> deriveInvariantBadges(DebugRecord const &record) {
     std::vector<InvariantBadge> badges;
+    if (!record.invariantResults.empty()) {
+        for (EconomyInvariantResult const &result : record.invariantResults) {
+            std::string name = result.id;
+            if (result.id == "credits-conserved")
+                name = "Credits conserved";
+            else if (result.id == "agent-balances-nonnegative")
+                name = "No agent overspent";
+            else if (result.id == "settlement-prices-in-range")
+                name = "Prices in range";
+            else if (result.id == "households-within-credit-balance")
+                name = "Households within budget";
+            else if (result.id == "standard-resources-conserved")
+                name = "Standard resources conserved";
+            else if (result.id == "standard-resource-stocks-nonnegative")
+                name = "Standard-resource stocks non-negative";
+            badges.push_back({std::move(name),
+                              result.passed ? InvariantState::PASS : InvariantState::FAIL,
+                              result.passed ? "Explicit tick evaluation passed." : "Explicit tick evaluation failed."});
+        }
+        return badges;
+    }
     auto const beforeCredits = credits(record.beforeState);
     auto const afterCredits = credits(record.afterState);
     auto const expectedCredits = beforeCredits ? checkedAdd(*beforeCredits, record.liquidationCredits) : std::nullopt;
@@ -823,6 +1034,12 @@ void DebugOverlay::draw(Client const &client,
         return;
     }
     std::sort(ids.begin(), ids.end());
+    if (selectedBody && *selectedBody < snapshot.bodies.size()) {
+        std::optional<ColonyId> const bodyColony = colonyIdForBody(snapshot, *selectedBody);
+        if (bodyColony && std::find(ids.begin(), ids.end(), *bodyColony) != ids.end()) {
+            mSelectedColony = bodyColony;
+        }
+    }
     if (!mSelectedColony || std::find(ids.begin(), ids.end(), *mSelectedColony) == ids.end()) {
         mSelectedColony = ids.front();
         mScrubTurn.reset();
@@ -888,7 +1105,10 @@ void DebugOverlay::draw(Client const &client,
     if (selectedBody && *selectedBody < snapshot.bodies.size()) {
         ImGui::Begin("Map selection");
         ImGui::Text("Selected: %s", snapshot.bodies[*selectedBody].name.c_str());
-        ImGui::TextUnformatted("No body-to-colony ID mapping is present; choose a colony in the scrubber.");
+        std::optional<ColonyId> const bodyColony = colonyIdForBody(snapshot, *selectedBody);
+        std::string const mappingStatus =
+            bodyColony ? "Mapped to colony " + text(bodyColony->value) : "Selected body has no colony record.";
+        ImGui::TextUnformatted(mappingStatus.c_str());
         ImGui::End();
     }
     static bool showDiff{};

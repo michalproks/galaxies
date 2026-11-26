@@ -222,6 +222,8 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
     std::int64_t const budget = static_cast<std::int64_t>(
         std::floor(static_cast<double>(std::max<std::int64_t>(0, corporation.credits)) * (1.0 - RESERVE_FRACTION)));
     auto const [maintenanceLabour, maintenanceMaterials] = maintenanceInputs(corporation);
+    plan.diagnostic.maintenanceLabour = maintenanceLabour;
+    plan.diagnostic.maintenanceMaterials = maintenanceMaterials;
     double const maintenanceCost = static_cast<double>(maintenanceLabour) * prices.inputs.labour +
                                    static_cast<double>(maintenanceMaterials) * prices.inputs.materials;
     std::vector<MethodPlan> methods = makeMethods(corporation, prices.inputs);
@@ -234,7 +236,13 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
             static_cast<double>(method.definition.energyPerTurnWhenStaffed) * prices.inputs.energy > productionBudget) {
             method.outputCapacity = 0;
         }
+        plan.diagnostic.methods.push_back({method.definition.tier, method.unitCost, method.outputCapacity});
     }
+    std::size_t const retainedDemandSteps = std::min(corporation.sectorDemand.steps.size(), MAX_PLANNING_DEMAND_STEPS);
+    plan.diagnostic.demandSteps.assign(corporation.sectorDemand.steps.begin(),
+                                       corporation.sectorDemand.steps.begin() +
+                                           static_cast<std::ptrdiff_t>(retainedDemandSteps));
+    plan.diagnostic.demandStepsTruncated = retainedDemandSteps < corporation.sectorDemand.steps.size();
     auto const best = profitSweep(corporation, methods);
     if (best.has_value()) {
         plan.targetPrice = best->first;
@@ -258,6 +266,7 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
             corporation.sectorDemand.quantityAtPrice(corporation.lastSettlementPrice);
         desiredOutput += std::max<std::int64_t>(0, demandAtLastPrice - plan.targetQuantity);
     }
+    plan.diagnostic.surplusDecision = desiredOutput > plan.targetQuantity;
     Allocation allocation = allocateOutput(methods, desiredOutput);
     auto actualPlanCost = [&](Allocation const &current) {
         double cost = maintenanceCost;
@@ -289,7 +298,8 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
     };
 
     // economic-model.md, Order Submission: surplus is the first budget cut.
-    if (actualPlanCost(allocation) > static_cast<double>(budget) && desiredOutput > plan.targetQuantity) {
+    plan.diagnostic.budgetClampFired = actualPlanCost(allocation) > static_cast<double>(budget);
+    if (plan.diagnostic.budgetClampFired && desiredOutput > plan.targetQuantity) {
         desiredOutput = plan.targetQuantity;
         allocation = allocateOutput(methods, desiredOutput);
     }
@@ -342,6 +352,7 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
             if (cost <= jumpStartLimit &&
                 actualPlanCost(allocation) + static_cast<double>(cost) <= static_cast<double>(budget)) {
                 plan.construction.push_back({corporation.sector, candidate->tier, 0, true, cost});
+                plan.diagnostic.constructionGatePassed = true;
             }
         }
     } else if (plan.targetQuantity > desiredOutput) {
@@ -357,6 +368,7 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
             std::int64_t const buildCount = cost == 0 ? 0 : std::min(count, available / cost);
             for (std::int64_t index = 0; index < buildCount; ++index) {
                 plan.construction.push_back({corporation.sector, candidate->tier, 0, true, cost});
+                plan.diagnostic.constructionGatePassed = true;
             }
         }
     }
@@ -404,6 +416,10 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
         plan.staffing.begin(), plan.staffing.end(), [](BuildingStaffing const &left, BuildingStaffing const &right) {
             return left.buildingIndex < right.buildingIndex;
         });
+    std::size_t const retainedStaffing = std::min(plan.staffing.size(), MAX_PLANNING_STAFFING_ENTRIES);
+    plan.diagnostic.staffing.assign(plan.staffing.begin(),
+                                    plan.staffing.begin() + static_cast<std::ptrdiff_t>(retainedStaffing));
+    plan.diagnostic.staffingTruncated = retainedStaffing < plan.staffing.size();
 
     plan.breakEvenPrice =
         maximumUsedCost > 0.0 ? maximumUsedCost : (previousBreakEven > 0.0 ? previousBreakEven : PRICE_FLOOR);
@@ -466,6 +482,21 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
             return total + static_cast<double>(building.constructionValue);
         });
     plan.plannedCost = static_cast<std::int64_t>(std::ceil(actualPlanCost(allocation) + constructionCost));
+    plan.diagnostic.plannedCost = plan.plannedCost;
+    plan.diagnostic.targetPrice = plan.targetPrice;
+    plan.diagnostic.targetQuantity = plan.targetQuantity;
+    plan.diagnostic.targetProfit = plan.targetProfit;
+    plan.diagnostic.breakEvenPrice = plan.breakEvenPrice;
+    plan.diagnostic.budget = budget;
+    plan.diagnostic.plannedOutput = plan.plannedOutput;
+    std::int64_t capacity{};
+    for (MethodPlan const &method : methods) {
+        if (method.definition.tier != BuildTier::Manual &&
+            capacity <= std::numeric_limits<std::int64_t>::max() - method.outputCapacity) {
+            capacity += method.outputCapacity;
+        }
+    }
+    plan.diagnostic.idleOutputCapacity = std::max<std::int64_t>(0, capacity - plan.plannedOutput);
     // The worked corporation example books the first manual production run at its
     // target price; subsequent standard-resource production remains next-turn stock.
     std::int64_t const revenueQuantity =

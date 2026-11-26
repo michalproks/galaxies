@@ -192,6 +192,8 @@ aggregateEmpireSectors(std::span<PlayerRecord const> records) {
         for (std::size_t index = 0; index < result.size(); ++index) {
             result[index].corporationCount += record.corporationCounts[index];
             result[index].output += record.produced[index];
+            result[index].capacity = result[index].capacity.value_or(0) + record.sectorCapacity[index];
+            result[index].employment = result[index].employment.value_or(0) + record.sectorEmployment[index];
         }
     }
     return result;
@@ -350,7 +352,7 @@ void EmpireEconomyUi::draw(std::span<Simulation::Economy::ColonyEconomyRecordSna
                 ImGui::TableNextColumn();
                 ImGui::Text("%lld", static_cast<long long>(sector.corporationCount));
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(sector.capacity.has_value() ? "Available" : "Not exposed");
+                ImGui::Text("%lld", static_cast<long long>(sector.capacity.value_or(0)));
                 ImGui::TableNextColumn();
                 ImGui::Text("%s",
                             formatted(static_cast<double>(sector.output),
@@ -358,7 +360,7 @@ void EmpireEconomyUi::draw(std::span<Simulation::Economy::ColonyEconomyRecordSna
                                       sector.sector == SectorId::Energy ? 1.0 : 1000.0)
                                 .c_str());
                 ImGui::TableNextColumn();
-                ImGui::TextUnformatted(sector.employment.has_value() ? "Available" : "Not exposed");
+                ImGui::Text("%lld", static_cast<long long>(sector.employment.value_or(0)));
             }
             ImGui::EndTable();
         }

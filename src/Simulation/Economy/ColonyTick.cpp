@@ -185,6 +185,12 @@ namespace {
         std::int64_t energy{};
     };
 
+    struct ProductionOutcome {
+        std::int64_t output{};
+        std::int64_t materialsConsumed{};
+        std::int64_t fuelConsumed{};
+    };
+
     [[nodiscard]] BuildingDef const *definitionFor(Building const &building,
                                                    std::vector<BuildingDef> const &definitions) {
         auto const found = std::find_if(definitions.begin(), definitions.end(), [&building](BuildingDef const &def) {
@@ -337,9 +343,10 @@ namespace {
         }
     }
 
-    [[nodiscard]] std::int64_t produceForCorporation(Corporation &corporation,
-                                                     CorporationPlan const &plan,
-                                                     std::vector<SettlementOutcome> const &settlements) {
+    [[nodiscard]] ProductionOutcome produceForCorporation(Corporation &corporation,
+                                                          CorporationPlan const &plan,
+                                                          std::vector<SettlementOutcome> const &settlements) {
+        ProductionOutcome outcome;
         ProductionInputs const inputs = productionInputs(corporation, plan);
         std::int64_t laborAvailable{};
         std::int64_t energyAvailable{};
@@ -387,15 +394,21 @@ namespace {
                                                   : 0;
             std::int64_t const required = checkedAdd(fixed, variableUsed);
             std::int64_t const used = std::min(available, required);
+            if (resource == ResourceId::Materials) {
+                outcome.materialsConsumed = used;
+            } else {
+                outcome.fuelConsumed = used;
+            }
             corporation.stock[resource] -= used;
         }
 
         auto const outputResourceId = outputResource(corporation.sector);
         if (!outputResourceId.has_value() || actualOutput <= 0) {
-            return 0;
+            return outcome;
         }
         if (!isStandardResource(outputResourceId.value())) {
-            return actualOutput;
+            outcome.output = actualOutput;
+            return outcome;
         }
         ResourceId const outputResourceValue = outputResourceId.value();
         std::int64_t const oldQuantity = corporation.stock[outputResourceValue];
@@ -404,7 +417,8 @@ namespace {
         corporation.stockUnitCost = (static_cast<double>(oldQuantity) * oldCost +
                                      static_cast<double>(actualOutput) * std::max(0.0, plan.outputUnitCost)) /
                                     static_cast<double>(corporation.stock[outputResourceValue]);
-        return actualOutput;
+        outcome.output = actualOutput;
+        return outcome;
     }
 
     [[nodiscard]] CorporationTickDelta
@@ -635,6 +649,34 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
         }
         HouseholdTurnResult const turnResult = updateHouseholdConsumption(household, householdPlans[index], settlement);
         household = turnResult.household;
+        double const survivalNeed = static_cast<double>(household.population) * static_cast<double>(FOOD_PER_PERSON);
+        double const reserveTurns = survivalNeed > 0.0 ? static_cast<double>(household.foodStock) / survivalNeed : 0.0;
+        std::int64_t emergencyFoodFilled{};
+        for (SettlementOutcome const &marketSettlement : result.settlements) {
+            for (Trade const &trade : marketSettlement.trades) {
+                if (trade.orderId == householdPlans[index].emergencyFoodOrderId) {
+                    emergencyFoodFilled = checkedAdd(emergencyFoodFilled, trade.quantity);
+                }
+            }
+        }
+        result.householdOutcomes.push_back({household.id,
+                                            householdPlans[index].budget,
+                                            householdPlans[index].survivalNeed,
+                                            householdPlans[index].reserveTarget,
+                                            householdPlans[index].reserveGap,
+                                            householdPlans[index].emergencyFoodQuantity,
+                                            emergencyFoodFilled,
+                                            settlement.food.quantity,
+                                            householdPlans[index].foodShare,
+                                            householdPlans[index].serviceShare,
+                                            householdPlans[index].consumerGoodsShare,
+                                            householdPlans[index].consumptionTarget,
+                                            turnResult.foodSpent,
+                                            turnResult.servicesSpent,
+                                            turnResult.consumerGoodsSpent,
+                                            turnResult.foodEaten,
+                                            reserveTurns,
+                                            reserveTurns < 1.0});
         result.householdDeltas.push_back({household.id,
                                           household.credits - householdsAtStart[index].credits,
                                           household.population - householdsAtStart[index].population,
@@ -657,8 +699,17 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
     result.corporationDeltas.reserve(next.corporations.size() + newCorporations.size());
     for (std::size_t index = 0; index < next.corporations.size(); ++index) {
         Corporation &corporation = next.corporations[index];
-        corporation.lastProducedQuantity =
+        ProductionOutcome const production =
             produceForCorporation(corporation, corporationPlans[index], result.settlements);
+        corporation.lastProducedQuantity = production.output;
+        result.corporationOutcomes.push_back(
+            {corporation.id,
+             corporation.sector,
+             corporationPlans[index].diagnostic,
+             production.materialsConsumed,
+             production.fuelConsumed,
+             static_cast<std::int64_t>(corporationPlans[index].buildingsDestroyed.size()),
+             corporationPlans[index].buildingsDestroyed.empty()});
         for (BuildingStaffing const &staffing : corporationPlans[index].staffing) {
             if (staffing.buildingIndex < corporation.buildings.size()) {
                 corporation.buildings[staffing.buildingIndex].staffedWorkers = staffing.workers;
@@ -753,6 +804,8 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
             result.liquidationCredits = checkedAdd(result.liquidationCredits, salvage);
             for (ResourceId const resource :
                  {ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods}) {
+                result.liquidatedResources[static_cast<std::size_t>(resource)] = checkedAdd(
+                    result.liquidatedResources[static_cast<std::size_t>(resource)], corporation.stock[resource]);
                 std::int64_t const stockProceeds =
                     checkedMultiply(corporation.stock[resource],
                                     std::max<std::int64_t>(PRICE_FLOOR, next.market.lastPriceFor(resource)));
@@ -793,8 +846,28 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
                 survivor.credits = checkedAdd(survivor.credits, creditShare + (creditRemainder-- > 0 ? 1 : 0));
                 survivor.foodStock = checkedAdd(survivor.foodStock, foodShare + (foodRemainder-- > 0 ? 1 : 0));
             }
+        } else {
+            for (std::size_t const index : dissolving) {
+                result.liquidatedResources[static_cast<std::size_t>(ResourceId::Food)] =
+                    checkedAdd(result.liquidatedResources[static_cast<std::size_t>(ResourceId::Food)],
+                               next.households[index].foodStock);
+            }
         }
         next.households = std::move(survivors);
+        for (Corporation const &corporation : next.corporations) {
+            auto const original =
+                std::find_if(corporationsBefore.begin(),
+                             corporationsBefore.end(),
+                             [&corporation](Corporation const &candidate) { return candidate.id == corporation.id; });
+            if (original != corporationsBefore.end() &&
+                corporationLiquidated[static_cast<std::size_t>(original - corporationsBefore.begin())]) {
+                for (ResourceId const resource :
+                     {ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods}) {
+                    result.liquidatedResources[static_cast<std::size_t>(resource)] = checkedAdd(
+                        result.liquidatedResources[static_cast<std::size_t>(resource)], corporation.stock[resource]);
+                }
+            }
+        }
         next.corporations.erase(
             std::remove_if(next.corporations.begin(),
                            next.corporations.end(),
@@ -823,6 +896,19 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
                              return event.id == corporationsBefore[index].id;
                          })) {
             result.dissolvedCorporations.push_back({corporationsBefore[index].id, corporationsBefore[index].owner, 0});
+        }
+    }
+    for (Corporation const &corporation : next.corporations) {
+        bool const removed =
+            std::any_of(result.dissolvedCorporations.begin(),
+                        result.dissolvedCorporations.end(),
+                        [&corporation](DissolvedCorporation const &event) { return event.id == corporation.id; });
+        if (removed) {
+            for (ResourceId const resource :
+                 {ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods}) {
+                result.liquidatedResources[static_cast<std::size_t>(resource)] = checkedAdd(
+                    result.liquidatedResources[static_cast<std::size_t>(resource)], corporation.stock[resource]);
+            }
         }
     }
     next.corporations.erase(std::remove_if(next.corporations.begin(),
@@ -876,6 +962,100 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
     if (totalCredits(next) != checkedAdd(startingCredits, result.liquidationCredits)) {
         throw std::logic_error("Colony tick credit transfers did not balance against liquidation proceeds");
     }
+    result.invariantResults.push_back({"credits-conserved", true});
+    bool nonnegativeBalances = std::all_of(
+        next.households.begin(), next.households.end(), [](Household const &agent) { return agent.credits >= 0; });
+    nonnegativeBalances = nonnegativeBalances &&
+                          std::all_of(next.corporations.begin(), next.corporations.end(), [](Corporation const &agent) {
+                              return agent.credits >= 0;
+                          });
+    result.invariantResults.push_back({"agent-balances-nonnegative", nonnegativeBalances});
+    bool pricesInRange =
+        std::all_of(result.settlements.begin(), result.settlements.end(), [](SettlementOutcome const &settlement) {
+            return settlement.price >= PRICE_FLOOR && settlement.price <= PRICE_CAP;
+        });
+    result.invariantResults.push_back({"settlement-prices-in-range", pricesInRange});
+    bool householdsWithinBudget = true;
+    for (std::size_t index = 0; index < result.householdOutcomes.size(); ++index) {
+        HouseholdTickOutcome const &outcome = result.householdOutcomes[index];
+        std::int64_t const spending =
+            checkedAdd(checkedAdd(outcome.foodSpent, outcome.servicesSpent), outcome.consumerGoodsSpent);
+        if (spending > householdsAtStart[index].credits) {
+            householdsWithinBudget = false;
+        }
+    }
+    result.invariantResults.push_back({"households-within-credit-balance", householdsWithinBudget});
+    constexpr std::array<ResourceId, 4> STANDARD_RESOURCES{
+        ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods};
+    auto inventoryTotal = [](std::vector<Household> const &households,
+                             std::vector<Corporation> const &corporations,
+                             ResourceId const resource) {
+        std::int64_t total{};
+        if (resource == ResourceId::Food) {
+            for (Household const &household : households) {
+                total = checkedAdd(total, household.foodStock);
+            }
+        }
+        for (Corporation const &corporation : corporations) {
+            total = checkedAdd(total, corporation.stock[resource]);
+        }
+        return total;
+    };
+    bool resourcesConserved = true;
+    for (ResourceId const resource : STANDARD_RESOURCES) {
+        std::int64_t produced{};
+        for (CorporationTickDelta const &delta : result.corporationDeltas) {
+            auto const corporation =
+                std::find_if(corporationsBefore.begin(),
+                             corporationsBefore.end(),
+                             [&delta](Corporation const &candidate) { return candidate.id == delta.id; });
+            auto const current =
+                std::find_if(next.corporations.begin(),
+                             next.corporations.end(),
+                             [&delta](Corporation const &candidate) { return candidate.id == delta.id; });
+            std::optional<SectorId> sector;
+            if (corporation != corporationsBefore.end()) {
+                sector = corporation->sector;
+            } else if (current != next.corporations.end()) {
+                sector = current->sector;
+            }
+            if (sector && outputResource(*sector) == resource) {
+                produced = checkedAdd(produced, delta.produced);
+            }
+        }
+        std::int64_t consumed{};
+        if (resource == ResourceId::Food) {
+            for (HouseholdTickOutcome const &outcome : result.householdOutcomes) {
+                consumed = checkedAdd(consumed, outcome.foodEaten);
+            }
+        } else if (resource == ResourceId::Materials || resource == ResourceId::Fuel) {
+            for (CorporationTickOutcome const &outcome : result.corporationOutcomes) {
+                consumed = checkedAdd(
+                    consumed, resource == ResourceId::Materials ? outcome.materialsConsumed : outcome.fuelConsumed);
+            }
+        } else if (resource == ResourceId::ConsumerGoods) {
+            for (HouseholdTickDelta const &delta : result.householdDeltas) {
+                consumed = checkedAdd(consumed, delta.consumerGoodsConsumed);
+            }
+        }
+        std::int64_t expected = checkedAdd(inventoryTotal(householdsAtStart, corporationsAtStart, resource), produced);
+        expected = checkedAdd(expected, -consumed);
+        expected = checkedAdd(expected, -result.liquidatedResources[static_cast<std::size_t>(resource)]);
+        resourcesConserved =
+            resourcesConserved && expected == inventoryTotal(next.households, next.corporations, resource);
+    }
+    result.invariantResults.push_back({"standard-resources-conserved", resourcesConserved});
+    bool resourcesNonnegative = true;
+    for (Corporation const &corporation : next.corporations) {
+        for (ResourceId const resource :
+             {ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods}) {
+            resourcesNonnegative = resourcesNonnegative && corporation.stock[resource] >= 0;
+        }
+    }
+    for (Household const &household : next.households) {
+        resourcesNonnegative = resourcesNonnegative && household.foodStock >= 0;
+    }
+    result.invariantResults.push_back({"standard-resource-stocks-nonnegative", resourcesNonnegative});
     return result;
 }
 

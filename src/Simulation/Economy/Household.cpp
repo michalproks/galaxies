@@ -122,6 +122,7 @@ HouseholdOrderPlan makeHouseholdOrders(Household const &household,
     double const servicePrice = clampPrice(priceSamples.service);
     double const consumerGoodsPrice = clampPrice(priceSamples.consumerGoods);
     HouseholdOrderPlan plan;
+    plan.emergencyFoodOrderId = orderIds.emergencyFood;
     long double const budgetValue =
         static_cast<long double>(household.propIncome) * static_cast<long double>(household.lastIncome) +
         static_cast<long double>(household.propSavings) *
@@ -174,6 +175,8 @@ HouseholdOrderPlan makeHouseholdOrders(Household const &household,
     double const reserveTurns = static_cast<double>(RESERVE_MAX) * cheapness;
     std::int64_t const reserveTarget = toQuantity(reserveTurns * static_cast<double>(plan.survivalNeed));
     std::int64_t const reserveGap = std::max<std::int64_t>(0, reserveTarget - household.foodStock);
+    plan.reserveTarget = reserveTarget;
+    plan.reserveGap = reserveGap;
     long double const foodHeadroomCost = static_cast<long double>(add(comfortHeadroom, reserveGap)) * foodPrice;
     plan.foodShare = std::min(categoryShare, floorCredits(foodHeadroomCost));
     plan.serviceShare = categoryShare;
@@ -259,6 +262,9 @@ HouseholdTurnResult updateHouseholdConsumption(Household const &household,
     }
     result.servicesConsumed = settlement.service.quantity;
     result.consumerGoodsConsumed = settlement.consumerGoods.quantity;
+    result.foodSpent = foodCost;
+    result.servicesSpent = serviceCost;
+    result.consumerGoodsSpent = consumerGoodsCost;
     result.income = income;
     result.household.credits = add(household.credits - totalCosts, income);
     result.household.lastIncome = income;

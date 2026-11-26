@@ -3,6 +3,7 @@
 
 #include "Order.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <vector>
@@ -33,6 +34,17 @@ struct Trade {
     std::int64_t price{};
 };
 
+/** One evaluated point in the deterministic market-price sweep. */
+struct MarketCandidateEvaluation {
+    std::int64_t price{};
+    std::int64_t supply{};
+    std::int64_t demand{};
+    std::int64_t tradedQuantity{};
+};
+
+/** Why the prior-price tie-break selected a particular price in the maximizing interval. */
+enum class SettlementPriceChoice : std::uint8_t { NO_TRADE, PRIOR_PRICE, LOWEST_MAXIMIZER, HIGHEST_MAXIMIZER };
+
 /** Result of settling one resource order book. */
 struct SettlementOutcome {
     /** Resource whose order book was settled. */
@@ -43,7 +55,18 @@ struct SettlementOutcome {
     std::int64_t tradedQuantity{};
     /** Orders with positive executed quantities, in ascending order-id order. */
     std::vector<Trade> trades;
+    /** Bounded candidate-price sweep trace, retained in ascending price order. */
+    std::vector<MarketCandidateEvaluation> candidateEvaluations;
+    /** Inclusive interval of prices maximizing traded quantity. */
+    std::int64_t maximizingPriceLow{};
+    std::int64_t maximizingPriceHigh{};
+    /** Prior price and the rule that selected the settled price from the maximizing interval. */
+    std::int64_t priorPrice{};
+    SettlementPriceChoice priceChoice{SettlementPriceChoice::NO_TRADE};
 };
+
+/** Maximum candidate-price rows retained in each debug settlement trace. */
+inline constexpr std::size_t MAX_MARKET_TRACE_CANDIDATES = 64;
 
 /** Colony-local order books and remembered per-resource settlement prices. */
 struct Market { // NOLINT(bugprone-exception-escape)
