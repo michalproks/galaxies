@@ -1,17 +1,28 @@
 #ifndef GALAXIES_CLIENT_UI_H
 #define GALAXIES_CLIENT_UI_H
 
+#include "EconomyUi.h"
+#include "EmpireEconomyUi.h"
 #include "Selection.h"
 
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
+#include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string_view>
 
 struct ImDrawData;
+namespace Server {
+struct GameSnapshot;
+}
 
 namespace Client {
+
+class Client;
+class DebugOverlay;
 
 class Ui {
 public:
@@ -50,11 +61,34 @@ public:
     /** Draws a standard ImGui window with the supplied object name as its title. */
     void drawInfoBox(std::string_view name);
 
+    /** Draws the info box and colony economy summary/modal for a selected body. */
+    void drawEconomyInfoBox(std::string_view name,
+                            std::optional<Simulation::Economy::ColonyId> colonyId,
+                            Client const &client);
+
     /** Draws the fixed top-right game date-time and speed display. */
     void drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed);
 
+    /** Draws the empire economy screen from the snapshot's player-facing histories. */
+    void drawEmpireEconomy(std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const> records);
+
+    /** Returns and clears the colony selected in the empire ranking table. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> consumeRequestedEconomyColony() noexcept;
+
+    /** Returns the colony selected in the empire ranking table without clearing the request. */
+    [[nodiscard]] std::optional<Simulation::Economy::ColonyId> requestedEconomyColony() const noexcept;
+
+    /** Mounts the economy debug overlay into the active ImGui frame. */
+    void drawDebugOverlay(DebugOverlay &overlay,
+                          Client const &client,
+                          Server::GameSnapshot const &snapshot,
+                          std::optional<std::size_t> selectedBody);
+
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;
+
+    /** Returns whether the economy modal blocks map camera input. */
+    [[nodiscard]] bool blocksMapInput() const noexcept;
 
 private:
     void initializeVulkan(VkRenderPass renderPass, std::uint32_t imageCount);
@@ -67,8 +101,10 @@ private:
     VkQueue mQueue{};
     VkDescriptorPool mDescriptorPool{};
     VkExtent2D mViewport{};
+    EmpireEconomyUi mEmpireEconomyUi;
     bool mSdlBackendInitialized{};
     bool mVulkanBackendInitialized{};
+    EconomyUi mEconomyUi;
 };
 
 } // namespace Client

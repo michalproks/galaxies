@@ -1,9 +1,11 @@
 #ifndef GALAXIES_SERVER_SERVER_H
 #define GALAXIES_SERVER_SERVER_H
 
+#include "Economy/EconomyTickOrchestrator.h"
 #include "Simulation.h"
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -18,11 +20,13 @@ struct BodySnapshot {
     std::string name; /**< Display name of the body. */
 };
 
-/** Render-ready game time, speed, and body state for a single frame. */
+/** Render-ready game time, speed, bodies, and committed economy data for a single frame. */
 struct GameSnapshot {
     double gameHours{}; /**< Authoritative in-game hours since the calendar epoch. */
     Simulation::GameSpeed speed{Simulation::GameSpeed::NORMAL}; /**< Current game speed. */
     std::vector<BodySnapshot> bodies;
+    std::shared_ptr<std::vector<Simulation::Economy::ColonyEconomyRecordSnapshot> const> economyRecords;
+    std::vector<Simulation::Economy::EconomyEventBatch> economyEvents;
 };
 
 class Server {
@@ -30,13 +34,13 @@ public:
     using Clock = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
 
-    /** Creates the authoritative planetary system and starts its game clock. */
+    /** Creates the authoritative planetary system, Earth economy, and game clock. */
     Server();
 
-    /** Builds a render-ready snapshot for a finite explicit game time, in hours since the epoch.
+    /** Builds a render-ready snapshot and commits any crossed 7-day economic periods.
      * Throws std::invalid_argument if gameHours is not finite.
      */
-    [[nodiscard]] GameSnapshot snapshot(double gameHours) const;
+    [[nodiscard]] GameSnapshot snapshot(double gameHours);
 
     /** Accumulates game hours since the prior tick using the current speed and returns a snapshot. */
     [[nodiscard]] GameSnapshot snapshot(TimePoint now);
@@ -51,10 +55,15 @@ public:
     [[nodiscard]] Simulation::GameSpeed speed() const;
 
 private:
+    static constexpr int MAX_TICK_FAILURES = 5;
     Simulation::PlanetarySystem mPlanetarySystem;
+    Simulation::Economy::EconomyTickOrchestrator mEconomy;
+    std::shared_ptr<std::vector<Simulation::Economy::ColonyEconomyRecordSnapshot> const> mEconomyRecords;
+    std::int64_t mLastRecordPeriod{-1};
     double mGameHours{};
     Simulation::GameSpeed mSpeed{Simulation::GameSpeed::NORMAL};
     TimePoint mLastTick;
+    int mConsecutiveTickFailures{};
 };
 
 } // namespace Server

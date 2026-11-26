@@ -1,5 +1,7 @@
 #include "Ui.h"
 
+#include "DebugOverlay.h"
+
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -14,7 +16,7 @@ namespace {
     constexpr float INFO_WINDOW_WIDTH = 220.0F;
     constexpr float INFO_WINDOW_HEIGHT = 60.0F;
     constexpr float GAME_TIME_WINDOW_WIDTH = 220.0F;
-    constexpr float GAME_TIME_WINDOW_HEIGHT = 48.0F;
+    constexpr float GAME_TIME_WINDOW_HEIGHT = 72.0F;
     constexpr float WINDOW_PADDING = 8.0F;
     constexpr float SELECTION_LINE_THICKNESS = 2.0F;
 
@@ -181,6 +183,16 @@ void Ui::drawInfoBox(std::string_view name) {
     ImGui::End();
 }
 
+void Ui::drawEconomyInfoBox(std::string_view const name,
+                            std::optional<Simulation::Economy::ColonyId> const colonyId,
+                            Client const &client) {
+    if (colonyId.has_value()) {
+        mEconomyUi.draw(name, colonyId, client);
+    } else {
+        drawInfoBox(name);
+    }
+}
+
 void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameSpeed speed) {
     ImGuiIO const &io = ImGui::GetIO();
     ImGui::SetNextWindowPos({io.DisplaySize.x - GAME_TIME_WINDOW_WIDTH - WINDOW_PADDING, WINDOW_PADDING},
@@ -194,11 +206,35 @@ void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameS
     ImGui::TextUnformatted(dateText.c_str());
     std::string const speedText = std::string("Speed: ") + std::string(speedName(speed));
     ImGui::TextUnformatted(speedText.c_str());
+    mEmpireEconomyUi.drawTopBarButton();
     ImGui::End();
+}
+
+void Ui::drawEmpireEconomy(std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const> records) {
+    mEmpireEconomyUi.draw(records);
+}
+
+std::optional<Simulation::Economy::ColonyId> Ui::consumeRequestedEconomyColony() noexcept {
+    return mEmpireEconomyUi.consumeRequestedColony();
+}
+
+std::optional<Simulation::Economy::ColonyId> Ui::requestedEconomyColony() const noexcept {
+    return mEmpireEconomyUi.requestedColony();
+}
+
+void Ui::drawDebugOverlay(DebugOverlay &overlay,
+                          Client const &client,
+                          Server::GameSnapshot const &snapshot,
+                          std::optional<std::size_t> selectedBody) {
+    overlay.draw(client, snapshot, selectedBody);
 }
 
 bool Ui::wantsMouseCapture() const {
     return ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse;
+}
+
+bool Ui::blocksMapInput() const noexcept {
+    return mEconomyUi.modalOpen();
 }
 
 } // namespace Client

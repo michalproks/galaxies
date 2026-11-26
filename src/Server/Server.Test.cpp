@@ -7,7 +7,7 @@
 #include <numbers>
 
 TEST_CASE("A server snapshot contains the planetary system at the requested game hour") {
-    Server::Server const server;
+    Server::Server server;
     Server::GameSnapshot const snapshot = server.snapshot(7.5);
 
     REQUIRE(snapshot.gameHours == Catch::Approx(7.5));
@@ -76,4 +76,27 @@ TEST_CASE("Server snapshots integrate wall-clock time at the current speed") {
     server.setSpeed(Simulation::GameSpeed::NORMAL);
     Server::GameSnapshot const resumed = server.snapshot(start + std::chrono::seconds(12));
     CHECK(resumed.gameHours == Catch::Approx(240.0));
+}
+
+TEST_CASE("Server snapshots publish economy records only after each 7-day boundary") {
+    Server::Server server;
+    Server::GameSnapshot const initial = server.snapshot(0.0);
+    REQUIRE(initial.economyRecords != nullptr);
+    CHECK(initial.economyRecords->size() == 1);
+    CHECK((*initial.economyRecords)[0].playerHistory.empty());
+
+    Server::GameSnapshot const beforeBoundary = server.snapshot(168.0 - 0.01);
+    CHECK((*beforeBoundary.economyRecords)[0].playerHistory.empty());
+    CHECK(initial.economyRecords == beforeBoundary.economyRecords);
+
+    Server::GameSnapshot const atBoundary = server.snapshot(168.0);
+    REQUIRE((*atBoundary.economyRecords)[0].playerHistory.size() == 1);
+    CHECK((*atBoundary.economyRecords)[0].playerHistory[0].turnNumber == 1);
+    CHECK((*atBoundary.economyRecords)[0].debugRecords.size() == 1);
+    REQUIRE(atBoundary.economyEvents.size() == 1);
+    CHECK(atBoundary.economyEvents[0].turnNumber == 1);
+
+    Server::GameSnapshot const sameHour = server.snapshot(168.0);
+    CHECK(sameHour.economyEvents.empty());
+    CHECK((*sameHour.economyRecords)[0].playerHistory.size() == 1);
 }

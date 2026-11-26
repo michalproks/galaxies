@@ -2,6 +2,7 @@
 
 #include "CircleFragmentShader.h"
 #include "CircleVertexShader.h"
+#include "EconomyUi.h"
 #include "Selection.h"
 #include "Ui.h"
 
@@ -600,7 +601,9 @@ void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex,
 void VulkanRenderer::renderFrame(Camera const &camera,
                                  Server::GameSnapshot const &snapshot,
                                  VkExtent2D viewport,
-                                 std::optional<std::size_t> selectedBody) {
+                                 std::optional<std::size_t> selectedBody,
+                                 DebugOverlay &debugOverlay,
+                                 Client const &client) {
     if (viewport.width == 0 || viewport.height == 0 || viewport.width != mExtent.width ||
         viewport.height != mExtent.height) {
         throw std::invalid_argument("The render viewport must match the current non-zero swapchain extent.");
@@ -664,11 +667,16 @@ void VulkanRenderer::renderFrame(Camera const &camera,
         }
         mUi->beginFrame();
         mUi->drawGameTimeBox(Simulation::dateTimeFromGameHours(snapshot.gameHours), snapshot.speed);
+        mUi->drawEmpireEconomy(
+            snapshot.economyRecords != nullptr
+                ? std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const>(*snapshot.economyRecords)
+                : std::span<Simulation::Economy::ColonyEconomyRecordSnapshot const>{});
         if (selectedBody.has_value() && selectedBody.value() < snapshot.bodies.size()) {
             Server::BodySnapshot const &body = snapshot.bodies[selectedBody.value()];
             mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));
-            mUi->drawInfoBox(body.name);
+            mUi->drawEconomyInfoBox(body.name, colonyIdForBody(snapshot, selectedBody.value()), client);
         }
+        mUi->drawDebugOverlay(debugOverlay, client, snapshot, selectedBody);
         ImDrawData *const drawData = mUi->endFrame();
         checkVk(vkResetCommandBuffer(mCommandBuffers[imageIndex], 0), "vkResetCommandBuffer");
         recordCommandBuffer(imageIndex, snapshot, bodyDraws, drawData);
@@ -710,6 +718,18 @@ VkExtent2D VulkanRenderer::viewport() const {
 
 bool VulkanRenderer::wantsMouseCapture() const {
     return mUi != nullptr && mUi->wantsMouseCapture();
+}
+
+bool VulkanRenderer::blocksMapInput() const {
+    return mUi != nullptr && mUi->blocksMapInput();
+}
+
+std::optional<Simulation::Economy::ColonyId> VulkanRenderer::consumeRequestedEconomyColony() noexcept {
+    return mUi == nullptr ? std::nullopt : mUi->consumeRequestedEconomyColony();
+}
+
+std::optional<Simulation::Economy::ColonyId> VulkanRenderer::requestedEconomyColony() const noexcept {
+    return mUi == nullptr ? std::nullopt : mUi->requestedEconomyColony();
 }
 
 void VulkanRenderer::destroySwapchainResources() {
