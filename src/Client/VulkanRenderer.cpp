@@ -600,7 +600,9 @@ void VulkanRenderer::recordCommandBuffer(std::size_t imageIndex,
 void VulkanRenderer::renderFrame(Camera const &camera,
                                  Server::GameSnapshot const &snapshot,
                                  VkExtent2D viewport,
-                                 std::optional<std::size_t> selectedBody) {
+                                 std::optional<std::size_t> selectedBody,
+                                 DebugOverlay &debugOverlay,
+                                 Client const &clientState) {
     if (viewport.width == 0 || viewport.height == 0 || viewport.width != mExtent.width ||
         viewport.height != mExtent.height) {
         throw std::invalid_argument("The render viewport must match the current non-zero swapchain extent.");
@@ -669,6 +671,7 @@ void VulkanRenderer::renderFrame(Camera const &camera,
             mUi->drawSelectionBox(selectionBox(body, camera, viewport, 1.25));
             mUi->drawInfoBox(body.name);
         }
+        mUi->drawDebugOverlay(debugOverlay, clientState, snapshot, selectedBody);
         ImDrawData *const drawData = mUi->endFrame();
         checkVk(vkResetCommandBuffer(mCommandBuffers[imageIndex], 0), "vkResetCommandBuffer");
         recordCommandBuffer(imageIndex, snapshot, bodyDraws, drawData);

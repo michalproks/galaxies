@@ -18,6 +18,8 @@ struct ImDrawData;
 namespace Client {
 
 class Ui;
+class Client;
+class DebugOverlay;
 
 /** Requests a swapchain extent constrained by the surface's capabilities. */
 struct SwapchainExtentRequest {
@@ -40,7 +42,9 @@ public:
     void renderFrame(Camera const &camera,
                      Server::GameSnapshot const &snapshot,
                      VkExtent2D viewport,
-                     std::optional<std::size_t> selectedBody);
+                     std::optional<std::size_t> selectedBody,
+                     DebugOverlay &debugOverlay,
+                     Client const &clientState);
 
     /** Returns whether the previous ImGui frame requested mouse input capture. */
     [[nodiscard]] bool wantsMouseCapture() const;

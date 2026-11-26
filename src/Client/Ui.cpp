@@ -1,5 +1,7 @@
 #include "Ui.h"
 
+#include "DebugOverlay.h"
+
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_vulkan.h>
@@ -195,6 +197,13 @@ void Ui::drawGameTimeBox(Simulation::DateTime const &dateTime, Simulation::GameS
     std::string const speedText = std::string("Speed: ") + std::string(speedName(speed));
     ImGui::TextUnformatted(speedText.c_str());
     ImGui::End();
+}
+
+void Ui::drawDebugOverlay(DebugOverlay &overlay,
+                          Client const &client,
+                          Server::GameSnapshot const &snapshot,
+                          std::optional<std::size_t> selectedBody) {
+    overlay.draw(client, snapshot, selectedBody);
 }
 
 bool Ui::wantsMouseCapture() const {
