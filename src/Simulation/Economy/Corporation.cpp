@@ -9,6 +9,7 @@
 #include <limits>
 #include <numeric>
 #include <optional>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -199,8 +200,18 @@ CorporationPlan planCorporation(Corporation const &corporation, CorporationPrice
         return plan;
     }
     std::int64_t nextOrderId = prices.firstOrderId.value;
+    // Belief-priced bids can exceed the settlement-price estimates used by the plan.
+    // Reserve cumulative limit-price spend so fills cannot debit more than current credits.
+    std::int64_t remainingBuyCredits = std::max<std::int64_t>(0, corporation.credits);
     auto addOrder =
-        [&](OrderSide const side, ResourceId const resource, std::int64_t const price, std::int64_t const quantity) {
+        [&](OrderSide const side, ResourceId const resource, std::int64_t const price, std::int64_t quantity) {
+            if (side == OrderSide::Buy) {
+                if (price < PRICE_FLOOR) {
+                    throw std::invalid_argument("Corporation buy orders require a positive price");
+                }
+                quantity = std::min(quantity, remainingBuyCredits / price);
+                remainingBuyCredits -= quantity * price;
+            }
             if (quantity > 0) {
                 plan.orders.push_back({OrderId{nextOrderId++}, corporation.id, side, resource, price, quantity});
             }

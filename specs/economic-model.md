@@ -665,7 +665,7 @@ Rules:
 
 - An agent submits **at most one order per `(side, resource)` per colony market**.
 - `quantity > 0` and `price` is in `[PRICE_FLOOR, PRICE_CAP]`, where `PRICE_FLOOR = 1` centicredit and `PRICE_CAP = 1 000 000` centicredits (10 000 credits).
-- **Buy orders are validated against the agent's credits at submission**: `quantity * price <= credits`. If it fails, the order is clamped to `quantity = credits / price` (integer division); orders clamped to zero are dropped. This guarantees no agent can go into debt, and that settlement can never break a budget.
+- **Buy orders are validated against the agent's credits at submission**: cumulative `quantity * limitPrice` across the agent's buy orders cannot exceed its credits. Orders are considered in deterministic submission order; each quantity is clamped to the remaining credit commitment divided by its limit price (integer division), and zero-quantity orders are dropped. This applies the credit cap across all resources, so settlement at any eligible price cannot make an agent go into debt.
 - **Sell orders are validated against the agent's holdings at submission**: `quantity <= stock(agent, resource)` in that colony. For instant resources, `stock` is the amount produced this turn. Orders clamped to zero are dropped.
 
 ### Settlement price

@@ -82,8 +82,8 @@ TEST_CASE("Earth economy records are deterministic across worker counts") {
     EconomyTickOrchestrator singleWorker{seeds, 1};
     EconomyTickOrchestrator multipleWorkers{seeds, 4};
 
-    static_cast<void>(singleWorker.advanceTo(1.0 * ECONOMY_TICK_HOURS));
-    static_cast<void>(multipleWorkers.advanceTo(1.0 * ECONOMY_TICK_HOURS));
+    static_cast<void>(singleWorker.advanceTo(3.0 * ECONOMY_TICK_HOURS));
+    static_cast<void>(multipleWorkers.advanceTo(3.0 * ECONOMY_TICK_HOURS));
     std::vector<ColonyEconomyRecordSnapshot> const singleRecords = singleWorker.recordSnapshots();
     std::vector<ColonyEconomyRecordSnapshot> const multipleRecords = multipleWorkers.recordSnapshots();
 
@@ -93,48 +93,56 @@ TEST_CASE("Earth economy records are deterministic across worker counts") {
         CHECK(singleRecords[colonyIndex].playerHistory == multipleRecords[colonyIndex].playerHistory);
         CHECK(serializePlayerHistory(singleRecords[colonyIndex].playerHistory) ==
               serializePlayerHistory(multipleRecords[colonyIndex].playerHistory));
-        CHECK(singleRecords[colonyIndex].playerHistory.size() == 1);
+        CHECK(singleRecords[colonyIndex].playerHistory.size() == 3);
     }
 }
 
-TEST_CASE("Earth seed maintains money accounting and near-seed prices for its first turn") {
+TEST_CASE("Earth seed maintains money and near-seed prices across turns 1 through 3") {
     EconomyTickOrchestrator orchestrator{1};
     std::int64_t expectedCredits = 62'030'000'000;
     constexpr std::array<std::int64_t, RESOURCE_COUNT> SEED_PRICES{0, 40, 15, 4, 6, 10, 40, 30};
 
-    std::vector<EconomyEventBatch> const events = orchestrator.advanceTo(ECONOMY_TICK_HOURS);
-    REQUIRE(events.size() == 1);
-    std::vector<ColonyEconomyRecordSnapshot> const records = orchestrator.recordSnapshots();
-    REQUIRE(records.size() == 1);
-    REQUIRE(records[0].playerHistory.size() == 1);
-    REQUIRE(records[0].debugRecords.size() == 1);
+    for (std::int64_t period = 1; period <= 3; ++period) {
+        std::vector<EconomyEventBatch> const events =
+            orchestrator.advanceTo(static_cast<double>(period * ECONOMY_TICK_HOURS));
+        REQUIRE(events.size() == 1);
+        std::vector<ColonyEconomyRecordSnapshot> const records = orchestrator.recordSnapshots();
+        REQUIRE(records.size() == 1);
+        REQUIRE(records[0].playerHistory.size() == static_cast<std::size_t>(period));
+        REQUIRE(records[0].debugRecords.size() == static_cast<std::size_t>(period));
 
-    DebugRecord const &debug = records[0].debugRecords.back();
-    expectedCredits += debug.liquidationCredits;
-    CHECK(totalCredits(debug.afterState) == expectedCredits);
-    CHECK(debug.afterState.turnNumber == 2);
-    PlayerRecord const &player = records[0].playerHistory.back();
-    CHECK(player.turnNumber == 1);
-    for (std::size_t resourceIndex = 1; resourceIndex < RESOURCE_COUNT; ++resourceIndex) {
-        CHECK(player.settlementPrices[resourceIndex] >= SEED_PRICES[resourceIndex] / 2);
-        CHECK(player.settlementPrices[resourceIndex] <= SEED_PRICES[resourceIndex] * 2);
+        DebugRecord const &debug = records[0].debugRecords.back();
+        expectedCredits += debug.liquidationCredits;
+        CHECK(totalCredits(debug.afterState) == expectedCredits);
+        CHECK(debug.afterState.turnNumber == period + 1);
+        for (Household const &household : debug.afterState.households) {
+            CHECK(household.credits >= 0);
+        }
+        for (Corporation const &corporation : debug.afterState.corporations) {
+            CHECK(corporation.credits >= 0);
+        }
+        PlayerRecord const &player = records[0].playerHistory.back();
+        CHECK(player.turnNumber == period);
+        for (std::size_t resourceIndex = 1; resourceIndex < RESOURCE_COUNT; ++resourceIndex) {
+            CHECK(player.settlementPrices[resourceIndex] >= SEED_PRICES[resourceIndex] / 2);
+            CHECK(player.settlementPrices[resourceIndex] <= SEED_PRICES[resourceIndex] * 2);
+        }
     }
 }
 
 } // namespace
 
-TEST_CASE("Invalid second Earth turn is rejected without changing committed state or records") {
+TEST_CASE("Earth economy commits three turns without orchestrator rejection") {
     EconomyTickOrchestrator orchestrator{1};
-    CHECK_THROWS(static_cast<void>(orchestrator.advanceTo(2.0 * ECONOMY_TICK_HOURS)));
-    CHECK(orchestrator.completedPeriods() == 1);
-    REQUIRE(orchestrator.colonies().size() == 1);
-    std::vector<ColonyEconomyRecordSnapshot> const committedRecords = orchestrator.recordSnapshots();
-    REQUIRE(committedRecords[0].debugRecords.size() == 1);
-    ColonyEconomy const &committedColony = committedRecords[0].debugRecords.back().afterState;
-    CHECK(totalCredits(orchestrator.colonies()[0]) == totalCredits(committedColony));
-    CHECK(orchestrator.colonies()[0].turnNumber == committedColony.turnNumber);
-    CHECK(committedRecords[0].playerHistory.size() == 1);
-    std::vector<EconomyEventBatch> const pendingEvents = orchestrator.takePendingEvents();
-    REQUIRE(pendingEvents.size() == 1);
-    CHECK(pendingEvents[0].turnNumber == 1);
+    std::vector<EconomyEventBatch> const events = orchestrator.advanceTo(3.0 * ECONOMY_TICK_HOURS);
+    CHECK(orchestrator.completedPeriods() == 3);
+    REQUIRE(events.size() == 3);
+    std::vector<ColonyEconomyRecordSnapshot> const records = orchestrator.recordSnapshots();
+    REQUIRE(records.size() == 1);
+    CHECK(records[0].playerHistory.size() == 3);
+    CHECK(records[0].debugRecords.size() == 3);
+    CHECK(orchestrator.colonies()[0].turnNumber == 4);
+    for (Corporation const &corporation : orchestrator.colonies()[0].corporations) {
+        CHECK(corporation.credits >= 0);
+    }
 }

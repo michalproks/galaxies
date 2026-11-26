@@ -1,4 +1,5 @@
 #include "ColonyTick.h"
+#include "InitialConditions.h"
 
 #include "EconomyConstants.h"
 
@@ -294,4 +295,35 @@ TEST_CASE("Zero-credit corporations dissolve at the end of the turn") {
     CHECK(result.dissolvedCorporations[0].owner.value == 1);
     CHECK(result.colony.corporations.empty());
     CHECK(creditsIn(result.colony) == creditsIn(colony));
+}
+
+TEST_CASE("Earth corporations never overspend their credits on the second turn") {
+    ColonyEconomy const seed = buildEarthSeed(ColonyId{0}, 0xA8U);
+    ColonyTickResult const first = tickColony(seed);
+    ColonyTickResult const second = tickColony(first.colony, first.marketData);
+
+    for (Corporation const &corporation : second.colony.corporations) {
+        std::int64_t previousCredits{};
+        bool existedBefore{};
+        for (Corporation const &previous : first.colony.corporations) {
+            if (previous.id == corporation.id) {
+                previousCredits = previous.credits;
+                existedBefore = true;
+                break;
+            }
+        }
+        CHECK(corporation.credits >= 0);
+        if (existedBefore) {
+            std::int64_t buyOrderCommitment{};
+            for (auto const &[resource, book] : second.colony.market.orderBooks) {
+                static_cast<void>(resource);
+                for (Order const &order : book.buyOrders) {
+                    if (order.owner == AgentRef{corporation.id}) {
+                        buyOrderCommitment += order.price * order.quantity;
+                    }
+                }
+            }
+            CHECK(buyOrderCommitment <= previousCredits);
+        }
+    }
 }
