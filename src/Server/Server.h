@@ -55,6 +55,7 @@ public:
     [[nodiscard]] Simulation::GameSpeed speed() const;
 
 private:
+    static constexpr int MAX_TICK_FAILURES = 5;
     Simulation::PlanetarySystem mPlanetarySystem;
     Simulation::Economy::EconomyTickOrchestrator mEconomy;
     std::shared_ptr<std::vector<Simulation::Economy::ColonyEconomyRecordSnapshot> const> mEconomyRecords;
@@ -62,6 +63,7 @@ private:
     double mGameHours{};
     Simulation::GameSpeed mSpeed{Simulation::GameSpeed::NORMAL};
     TimePoint mLastTick;
+    int mConsecutiveTickFailures{};
 };
 
 } // namespace Server

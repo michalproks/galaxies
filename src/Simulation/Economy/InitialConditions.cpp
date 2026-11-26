@@ -1,7 +1,10 @@
 #include "InitialConditions.h"
 
+#include "BuildingDef.h"
 #include "EconomyConstants.h"
+#include "Resources.h"
 #include "Rng.h"
+#include "Sector.h"
 
 #include <algorithm>
 #include <array>
@@ -102,6 +105,36 @@ namespace {
         return demandAfter - demandBefore;
     }
 
+    // Turn-1 production is gated on the material and fuel stocks a corporation already
+    // holds (maintenance inputs plus per-unit variable inputs), and standard-sector
+    // corporations only sell stock they held at the start of the turn. Seeding one turn of
+    // steady-state inputs and output keeps the initial economy in the self-sustaining
+    // state the specifications describe: every sector produces its seeded capacity and
+    // supply approximately equals demand from the first tick onward.
+    void seedSteadyStateStocks(Corporation &corporation, SectorSeed const &seed, std::int64_t const buildingCount) {
+        if (buildingCount <= 0) {
+            return;
+        }
+        BuildTier const tier = seededTier(seed.sector);
+        std::vector<BuildingDef> const methods = availableMethods(seed.sector);
+        auto const definition = std::find_if(
+            methods.begin(), methods.end(), [tier](BuildingDef const &method) { return method.tier == tier; });
+        if (definition == methods.end()) {
+            return;
+        }
+        std::int64_t const capacityPerBuilding = static_cast<std::int64_t>(
+            static_cast<double>(definition->capacity) * static_cast<double>(definition->outputPerManualWorker) *
+            definition->rateMultiplier);
+        std::int64_t const turnOutput = capacityPerBuilding * buildingCount;
+        corporation.stock[ResourceId::Materials] +=
+            definition->maintenanceMaterials * buildingCount + definition->materialsPerOutputUnit * turnOutput;
+        corporation.stock[ResourceId::Fuel] += definition->fuelPerOutputUnit * turnOutput;
+        auto const output = outputResource(seed.sector);
+        if (output.has_value() && isStandardResource(output.value())) {
+            corporation.stock[output.value()] += turnOutput;
+        }
+    }
+
     [[nodiscard]] Corporation makeCorporation(SectorSeed const &seed,
                                               CorporationId const id,
                                               std::int64_t const sectorCorporationIndex,
@@ -191,6 +224,7 @@ ColonyEconomy buildEarthSeed(ColonyId const colonyId, std::uint64_t const econom
                          false,
                          constructionValue(*definition, SEED_LABOUR_PRICE, SEED_MATERIALS_PRICE)});
                 }
+                seedSteadyStateStocks(corporation, seed, count);
             }
             colony.corporations.push_back(corporation);
             ++corporationIndex;

@@ -5,7 +5,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdint>
+#include <utility>
 
 namespace {
 
@@ -301,7 +303,6 @@ TEST_CASE("Earth corporations never overspend their credits on the second turn")
     ColonyEconomy const seed = buildEarthSeed(ColonyId{0}, 0xA8U);
     ColonyTickResult const first = tickColony(seed);
     ColonyTickResult const second = tickColony(first.colony, first.marketData);
-
     for (Corporation const &corporation : second.colony.corporations) {
         std::int64_t previousCredits{};
         bool existedBefore{};
@@ -326,4 +327,45 @@ TEST_CASE("Earth corporations never overspend their credits on the second turn")
             CHECK(buyOrderCommitment <= previousCredits);
         }
     }
+}
+
+TEST_CASE("Seeded Earth economy keeps ticking twelve periods without stalling") {
+    // Regression guard for the turn-9 stall: previously the seed booked zero steady-state
+    // stocks, the input-material production gate zeroed every sector on turn 1, corporations
+    // went bankrupt by turn 3, the colony collapsed, and the credit-conservation invariant
+    // threw at turn 9, making the server retry the poisoned period forever. A tick must now
+    // always complete and advance the turn number. Long-run population equilibrium under the
+    // Earth seed is a separate calibration concern (the model clears goods but not full
+    // employment), so this test asserts liveness, not survival.
+    ColonyEconomy colony = buildEarthSeed(ColonyId{42}, 0xA8U);
+    FoundingMarketData marketData{};
+    std::int64_t peakPopulation = colony.totalPopulation;
+    std::int64_t creditsAfterFirstTick{};
+    for (int period = 0; period < 12; ++period) {
+        ColonyTickResult result = period == 0 ? tickColony(colony) : tickColony(colony, marketData);
+        colony = std::move(result.colony);
+        marketData = result.marketData;
+        REQUIRE(colony.turnNumber == period + 2);
+        peakPopulation = std::max(peakPopulation, colony.totalPopulation);
+        if (colony.turnNumber == 2) {
+            for (Household const &household : colony.households) {
+                creditsAfterFirstTick += household.credits;
+            }
+            for (Corporation const &corporation : colony.corporations) {
+                creditsAfterFirstTick += corporation.credits;
+            }
+        }
+        for (Household const &household : colony.households) {
+            CHECK(household.credits >= 0);
+        }
+        for (Corporation const &corporation : colony.corporations) {
+            CHECK(corporation.credits >= 0);
+        }
+    }
+    // The economy must have been alive after the first tick with a substantial conserved
+    // ledger, and never throw the credit-conservation invariant (the turn-9 stall symptom).
+    // Long-run equilibrium under the Earth seed is an open calibration concern tracked
+    // separately; this test guards the stall regression.
+    CHECK(creditsAfterFirstTick > 10'000'000'000);
+    CHECK(peakPopulation > 0);
 }

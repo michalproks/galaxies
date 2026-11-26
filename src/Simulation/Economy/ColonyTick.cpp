@@ -358,8 +358,17 @@ namespace {
             }
         }
         std::int64_t actualOutput = inputs.output;
-        if (laborAvailable < inputs.fixedLabour || inputs.labour == 0) {
+        if (inputs.labour == 0) {
             actualOutput = 0;
+        } else if (laborAvailable < inputs.fixedLabour) {
+            // Partial maintenance labour scales output proportionally instead of zeroing
+            // it; an all-or-nothing gate collapses sectors whenever labour settlement
+            // comes up short for one turn and never lets them buy their way back.
+            actualOutput = inputs.fixedLabour > 0
+                               ? static_cast<std::int64_t>(static_cast<long double>(actualOutput) *
+                                                           static_cast<long double>(laborAvailable) /
+                                                           static_cast<long double>(inputs.fixedLabour))
+                               : actualOutput;
         } else {
             std::int64_t const productiveLabor = std::min(inputs.labour, laborAvailable - inputs.fixedLabour);
             actualOutput = std::min(actualOutput,
@@ -379,7 +388,12 @@ namespace {
             std::int64_t const fixed = inputs.fixedStandard[resource];
             std::int64_t const variable = inputs.standard[resource] - fixed;
             if (available < fixed) {
-                actualOutput = 0;
+                // Scale proportionally when maintenance inputs fall short (see labour gate above).
+                actualOutput = fixed > 0 ? std::min(actualOutput,
+                                                    static_cast<std::int64_t>(static_cast<long double>(actualOutput) *
+                                                                              static_cast<long double>(available) /
+                                                                              static_cast<long double>(fixed)))
+                                         : actualOutput;
             } else if (variable > 0 && inputs.output > 0) {
                 std::int64_t const variableAvailable = available - fixed;
                 actualOutput = std::min(actualOutput,
@@ -576,14 +590,19 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
         if (plan.liquidate) {
             corporationLiquidated[corporationIndex] = true;
             std::int64_t const salvage = salvageValue(corporation);
-            result.liquidationCredits = checkedAdd(result.liquidationCredits, salvage);
             if (owner != next.households.end()) {
                 std::size_t const ownerIndex = static_cast<std::size_t>(owner - next.households.begin());
+                result.liquidationCredits = checkedAdd(result.liquidationCredits, salvage);
                 corporateDividends[ownerIndex] =
                     checkedAdd(corporateDividends[ownerIndex], checkedAdd(corporation.credits, salvage));
+                result.dissolvedCorporations.push_back(
+                    {corporation.id, corporation.owner, checkedAdd(corporation.credits, salvage)});
+            } else {
+                // No surviving owner can receive the proceeds: the ledger is destroyed with
+                // the corporation. Book the disappearance so the conservation invariant holds.
+                result.liquidationCredits = checkedAdd(result.liquidationCredits, -corporation.credits);
+                result.dissolvedCorporations.push_back({corporation.id, corporation.owner, 0});
             }
-            result.dissolvedCorporations.push_back(
-                {corporation.id, corporation.owner, checkedAdd(corporation.credits, salvage)});
             corporation.credits = 0;
         } else {
             auto const ownerIndex = owner == next.households.end()
@@ -600,9 +619,9 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
         if (corporation.credits == 0 && !corporationLiquidated[corporationIndex]) {
             corporationLiquidated[corporationIndex] = true;
             std::int64_t const salvage = salvageValue(corporation);
-            result.liquidationCredits = checkedAdd(result.liquidationCredits, salvage);
             if (owner != next.households.end()) {
                 std::size_t const ownerIndex = static_cast<std::size_t>(owner - next.households.begin());
+                result.liquidationCredits = checkedAdd(result.liquidationCredits, salvage);
                 corporateDividends[ownerIndex] = checkedAdd(corporateDividends[ownerIndex], salvage);
             }
             result.dissolvedCorporations.push_back({corporation.id, corporation.owner, salvage});
@@ -801,7 +820,7 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
             }
             std::int64_t const salvage = salvageValue(corporation);
             std::int64_t proceeds = checkedAdd(corporation.credits, salvage);
-            result.liquidationCredits = checkedAdd(result.liquidationCredits, salvage);
+            std::int64_t createdProceeds = salvage;
             for (ResourceId const resource :
                  {ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods}) {
                 result.liquidatedResources[static_cast<std::size_t>(resource)] = checkedAdd(
@@ -810,7 +829,7 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
                     checkedMultiply(corporation.stock[resource],
                                     std::max<std::int64_t>(PRICE_FLOOR, next.market.lastPriceFor(resource)));
                 proceeds = checkedAdd(proceeds, stockProceeds);
-                result.liquidationCredits = checkedAdd(result.liquidationCredits, stockProceeds);
+                createdProceeds = checkedAdd(createdProceeds, stockProceeds);
                 corporation.stock[resource] = 0;
             }
             auto owner =
@@ -819,6 +838,10 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
                              [&corporation](Household const &household) { return household.id == corporation.owner; });
             if (owner != next.households.end()) {
                 owner->credits = checkedAdd(owner->credits, proceeds);
+                result.liquidationCredits = checkedAdd(result.liquidationCredits, createdProceeds);
+            } else {
+                // Unclaimed liquidation destroys the ledger with the corporation.
+                result.liquidationCredits = checkedAdd(result.liquidationCredits, -corporation.credits);
             }
             result.dissolvedCorporations.push_back({corporation.id, corporation.owner, proceeds});
             corporationLiquidated[corporationIndex] = true;
@@ -847,11 +870,17 @@ ColonyTickResult tickColony(ColonyEconomy colony, FoundingMarketData const &prev
                 survivor.foodStock = checkedAdd(survivor.foodStock, foodShare + (foodRemainder-- > 0 ? 1 : 0));
             }
         } else {
+            // Total extinction: with no survivors to inherit the dissolved households'
+            // balances, their credits leave the ledger. Book the disappearance so the tick
+            // commits atomically instead of failing the conservation invariant forever.
+            std::int64_t vanishedCredits{};
             for (std::size_t const index : dissolving) {
+                vanishedCredits = checkedAdd(vanishedCredits, next.households[index].credits);
                 result.liquidatedResources[static_cast<std::size_t>(ResourceId::Food)] =
                     checkedAdd(result.liquidatedResources[static_cast<std::size_t>(ResourceId::Food)],
                                next.households[index].foodStock);
             }
+            result.liquidationCredits = checkedAdd(result.liquidationCredits, -vanishedCredits);
         }
         next.households = std::move(survivors);
         for (Corporation const &corporation : next.corporations) {

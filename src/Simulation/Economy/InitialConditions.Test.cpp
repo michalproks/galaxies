@@ -139,10 +139,32 @@ TEST_CASE("Earth seed satisfies the initial-state population, money, ownership, 
         CHECK(corporation.stockUnitCost == 0.0);
         CHECK(corporation.lastSettlementPrice >= PRICE_FLOOR);
         CHECK(corporation.lastSettlementPrice <= PRICE_CAP);
-        for (ResourceId const resource :
-             {ResourceId::Food, ResourceId::Materials, ResourceId::Fuel, ResourceId::ConsumerGoods}) {
-            CHECK(corporation.stock[resource] == 0);
+        // Corporations start with one turn of steady-state inputs and saleable output so
+        // the seeded economy produces and trades from the very first tick (the production
+        // gate zeroes output when maintenance inputs are missing from stock).
+        std::int64_t const buildings = static_cast<std::int64_t>(corporation.buildings.size());
+        std::int64_t const unitOutput = corporation.sector == SectorId::Energy      ? 1'000'000
+                                        : corporation.sector == SectorId::Food      ? 12'000'000
+                                        : corporation.sector == SectorId::Materials ? 2'000'000
+                                                                                    : 1'000'000;
+        std::int64_t const maintenanceMaterials = corporation.sector == SectorId::Energy ? 10'000 : 15'000;
+        std::int64_t expectedMaterials = maintenanceMaterials * buildings;
+        if (corporation.sector == SectorId::Materials || corporation.sector == SectorId::ConsumerGoods) {
+            // Materials holds its own saleable output; consumer goods embed one kg of
+            // materials per unit produced.
+            expectedMaterials += unitOutput * buildings;
         }
+        std::int64_t const expectedFood = corporation.sector == SectorId::Food ? unitOutput * buildings : 0;
+        std::int64_t const expectedFuel =
+            (corporation.sector == SectorId::Energy || corporation.sector == SectorId::Fuel)
+                ? unitOutput * buildings
+                : 0; // energy holds its variable fuel input; the fuel sector holds its own saleable output
+        std::int64_t const expectedConsumerGoods =
+            corporation.sector == SectorId::ConsumerGoods ? unitOutput * buildings : 0;
+        CHECK(corporation.stock[ResourceId::Food] == expectedFood);
+        CHECK(corporation.stock[ResourceId::Materials] == expectedMaterials);
+        CHECK(corporation.stock[ResourceId::Fuel] == expectedFuel);
+        CHECK(corporation.stock[ResourceId::ConsumerGoods] == expectedConsumerGoods);
         for (Building const &building : corporation.buildings) {
             CHECK(building.sector == corporation.sector);
             CHECK(!(building.underConstruction));

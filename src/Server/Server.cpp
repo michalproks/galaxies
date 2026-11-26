@@ -22,12 +22,23 @@ GameSnapshot Server::snapshot(double const gameHours) {
         result.bodies.push_back(
             {Simulation::worldPosition(bodies, bodyIndex, gameHours), body.radius, body.color, body.kind, body.name});
     }
-    try {
-        result.economyEvents = mEconomy.advanceTo(gameHours);
-    } catch (std::exception const &error) {
-        // A failed period is rejected atomically; the orchestrator retains its prior state and retries later.
-        std::cerr << "Economic turn rejected: " << error.what() << '\n';
+    if (mConsecutiveTickFailures >= MAX_TICK_FAILURES) {
         result.economyEvents = mEconomy.takePendingEvents();
+    } else {
+        try {
+            result.economyEvents = mEconomy.advanceTo(gameHours);
+            mConsecutiveTickFailures = 0;
+        } catch (std::exception const &error) {
+            // A failed period is rejected atomically. Retrying a deterministic failure forever
+            // would stall every later turn, so log a bounded number of attempts and then stop
+            // advancing the economy instead.
+            ++mConsecutiveTickFailures;
+            std::cerr << "Economic turn rejected: " << error.what() << '\n';
+            if (mConsecutiveTickFailures == MAX_TICK_FAILURES) {
+                std::cerr << "Economic ticking disabled after repeated failures\n";
+            }
+            result.economyEvents = mEconomy.takePendingEvents();
+        }
     }
     if (mEconomyRecords == nullptr || mLastRecordPeriod != mEconomy.completedPeriods()) {
         mEconomyRecords = std::make_shared<std::vector<Simulation::Economy::ColonyEconomyRecordSnapshot> const>(
