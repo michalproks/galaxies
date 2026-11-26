@@ -39,7 +39,7 @@ namespace {
         "Corporations by sector",
         "Credits by owner",
     };
-    constexpr float INFO_WINDOW_WIDTH = 300.0F;
+    constexpr float INFO_WINDOW_WIDTH = 420.0F;
     constexpr float INFO_WINDOW_HEIGHT = 178.0F;
     constexpr float WINDOW_PADDING = 8.0F;
     constexpr float MODAL_WIDTH = 1180.0F;
@@ -476,51 +476,57 @@ void EconomyUi::draw(std::string_view const colonyName,
         mLastColonyId = colonyId;
         ColonyEconomyHistory const &history = client.economyHistory(colonyId);
         PlayerRecord const *const record = latestEconomyRecord(history.playerRecords);
+        std::optional<EconomySummary> summary;
+        if (record != nullptr) {
+            summary = computeEconomySummary(history.playerRecords);
+        }
         ImGuiIO const &io = ImGui::GetIO();
-        float const windowY = std::max(WINDOW_PADDING, io.DisplaySize.y - INFO_WINDOW_HEIGHT - WINDOW_PADDING);
+        // Warning chips get their own rows, so the fixed-height window grows to fit them.
+        float const warningRows = summary.has_value() ? static_cast<float>(summary->warnings.size()) : 0.0F;
+        float const infoHeight = INFO_WINDOW_HEIGHT + warningRows * ImGui::GetFrameHeight();
+        float const windowY = std::max(WINDOW_PADDING, io.DisplaySize.y - infoHeight - WINDOW_PADDING);
         ImGui::SetNextWindowPos({WINDOW_PADDING, windowY}, ImGuiCond_Always);
-        ImGui::SetNextWindowSize({INFO_WINDOW_WIDTH, INFO_WINDOW_HEIGHT}, ImGuiCond_Always);
+        ImGui::SetNextWindowSize({INFO_WINDOW_WIDTH, infoHeight}, ImGuiCond_Always);
         ImGuiWindowFlags const infoFlags = static_cast<ImGuiWindowFlags>(
             static_cast<unsigned>(ImGuiWindowFlags_NoTitleBar) | static_cast<unsigned>(ImGuiWindowFlags_NoResize) |
             static_cast<unsigned>(ImGuiWindowFlags_NoMove));
         ImGui::Begin("##ColonyEconomyInfo", nullptr, infoFlags);
         ImGui::TextUnformatted(colonyName.data(), colonyName.data() + colonyName.size());
-        if (record != nullptr) {
-            EconomySummary const summary = computeEconomySummary(history.playerRecords);
+        if (record != nullptr && summary.has_value()) {
             ImGui::Text("Pop %lld  Food %.1f turns  Unemployed %lld",
-                        static_cast<long long>(summary.population),
-                        summary.foodCoverageTurns.value_or(0.0),
-                        static_cast<long long>(summary.unemployed));
+                        static_cast<long long>(summary->population),
+                        summary->foodCoverageTurns.value_or(0.0),
+                        static_cast<long long>(summary->unemployed));
             for (std::size_t index = 0; index < KEY_RESOURCES.size(); ++index) {
-                if (index != 0) {
+                // Two prices per row keeps the line inside INFO_WINDOW_WIDTH.
+                if (index % 2 == 1) {
                     ImGui::SameLine();
                 }
                 ImGui::Text("%.*s %.2f%s",
                             static_cast<int>(Simulation::Economy::displayName(KEY_RESOURCES[index]).size()),
                             Simulation::Economy::displayName(KEY_RESOURCES[index]).data(),
-                            static_cast<double>(summary.keyPrices[index]) / 100.0,
-                            directionArrow(summary.keyPriceDirections[index]));
+                            static_cast<double>(summary->keyPrices[index]) / 100.0,
+                            directionArrow(summary->keyPriceDirections[index]));
             }
             ImGui::Text("Companies: F %lld M %lld Fu %lld E %lld S %lld G %lld",
-                        static_cast<long long>(summary.corporationCounts[0]),
-                        static_cast<long long>(summary.corporationCounts[1]),
-                        static_cast<long long>(summary.corporationCounts[2]),
-                        static_cast<long long>(summary.corporationCounts[3]),
-                        static_cast<long long>(summary.corporationCounts[4]),
-                        static_cast<long long>(summary.corporationCounts[5]));
-            for (EconomyWarning const warning : summary.warnings) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton(warningLabel(warning).c_str())) {
-                    mLastColonyId = colonyId;
-                    mHighlightedWarning = warning;
-                    mModalOpen = true;
-                }
-            }
+                        static_cast<long long>(summary->corporationCounts[0]),
+                        static_cast<long long>(summary->corporationCounts[1]),
+                        static_cast<long long>(summary->corporationCounts[2]),
+                        static_cast<long long>(summary->corporationCounts[3]),
+                        static_cast<long long>(summary->corporationCounts[4]),
+                        static_cast<long long>(summary->corporationCounts[5]));
             ImGui::SameLine();
             if (ImGui::Button("Economy")) {
                 mLastColonyId = colonyId;
                 mHighlightedWarning.reset();
                 mModalOpen = true;
+            }
+            for (EconomyWarning const warning : summary->warnings) {
+                if (ImGui::SmallButton(warningLabel(warning).c_str())) {
+                    mLastColonyId = colonyId;
+                    mHighlightedWarning = warning;
+                    mModalOpen = true;
+                }
             }
         } else {
             ImGui::TextUnformatted("Economy records available after the first turn.");
