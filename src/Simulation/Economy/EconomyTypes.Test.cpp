@@ -30,12 +30,10 @@ TEST_CASE("Production methods match the sector availability table") {
     using Simulation::Economy::SectorId;
 
     auto const fuelMethods = Simulation::Economy::availableMethods(SectorId::Fuel);
-    REQUIRE(fuelMethods.size() == 2);
+    REQUIRE(fuelMethods.size() == 3);
     CHECK(fuelMethods[0].tier == BuildTier::Manual);
     CHECK(fuelMethods[1].tier == BuildTier::Tier1);
-    CHECK(std::none_of(fuelMethods.begin(), fuelMethods.end(), [](Simulation::Economy::BuildingDef const &definition) {
-        return definition.tier == BuildTier::Tier2;
-    }));
+    CHECK(fuelMethods[2].tier == BuildTier::Tier2);
 
     auto const serviceMethods = Simulation::Economy::availableMethods(SectorId::Service);
     REQUIRE(serviceMethods.size() == 1);
@@ -79,6 +77,11 @@ TEST_CASE("Unit cost calculation follows the production-table worked example") {
               SectorId::ConsumerGoods, BuildTier::Tier1, {40.0, 6.0, 8.0, 10.0}) == Catch::Approx(26.0));
     CHECK(Simulation::Economy::unitCostCenticreditsPerOutput(
               SectorId::ConsumerGoods, BuildTier::Tier2, {40.0, 6.0, 8.0, 10.0}) == Catch::Approx(14.16));
+
+    // Seed-price table in economy-initial-conditions.md: tier 2 fuel costs 8.30 at labour 40, energy 15.
+    double const tier2FuelAtSeedPrices =
+        Simulation::Economy::unitCostCenticreditsPerOutput(SectorId::Fuel, BuildTier::Tier2, {40.0, 6.0, 15.0, 10.0});
+    CHECK(tier2FuelAtSeedPrices == Catch::Approx(8.30));
 }
 
 TEST_CASE("Jump-start capital is raised to cover the construction cost") {

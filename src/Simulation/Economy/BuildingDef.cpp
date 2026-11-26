@@ -27,6 +27,8 @@ namespace {
         SectorId::Food, BuildTier::Tier2, 200'000, 5.0, 500'000, 400'000, 20'000, 15'000, 20'000, 0, 0, 12};
     constexpr BuildingDef TIER2_MATERIALS{
         SectorId::Materials, BuildTier::Tier2, 200'000, 5.0, 500'000, 400'000, 20'000, 15'000, 20'000, 0, 0, 2};
+    constexpr BuildingDef TIER2_FUEL{
+        SectorId::Fuel, BuildTier::Tier2, 200'000, 5.0, 500'000, 400'000, 20'000, 15'000, 20'000, 0, 0, 1};
     constexpr BuildingDef TIER2_CONSUMER_GOODS{
         SectorId::ConsumerGoods, BuildTier::Tier2, 200'000, 5.0, 500'000, 400'000, 20'000, 15'000, 20'000, 0, 1, 1};
 
@@ -53,6 +55,8 @@ namespace {
                 return MANUAL_FUEL;
             if (tier == BuildTier::Tier1)
                 return TIER1_FUEL;
+            if (tier == BuildTier::Tier2)
+                return TIER2_FUEL;
             break;
         case SectorId::Energy:
             if (tier == BuildTier::Tier1)
@@ -83,7 +87,7 @@ std::vector<BuildingDef> availableMethods(SectorId const sector) {
     case SectorId::Materials:
         return {MANUAL_MATERIALS, TIER1_MATERIALS, TIER2_MATERIALS};
     case SectorId::Fuel:
-        return {MANUAL_FUEL, TIER1_FUEL};
+        return {MANUAL_FUEL, TIER1_FUEL, TIER2_FUEL};
     case SectorId::Energy:
         return {MANUAL_ENERGY};
     case SectorId::Service:
