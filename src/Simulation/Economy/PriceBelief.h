@@ -11,6 +11,15 @@ struct PriceBelief {
     double halfWidth{};
 };
 
+/**
+ * Returns a belief updated toward the last settlement price.
+ * The mean moves by BELIEF_ALPHA; the half-width contracts when filled and expands otherwise,
+ * clamped to [BELIEF_W_MIN, BELIEF_W_MAX] (economic-model.md, Price Beliefs and Order Submission).
+ * settlementPrice must be finite.
+ */
+[[nodiscard]] PriceBelief
+updatedPriceBelief(PriceBelief const &belief, double settlementPrice, bool orderFilled) noexcept;
+
 } // namespace Simulation::Economy
 
 #endif // GALAXIES_SIMULATION_ECONOMY_PRICE_BELIEF_H
