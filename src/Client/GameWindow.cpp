@@ -15,6 +15,11 @@ namespace {
     constexpr double PAN_SPEED = 5.0;
     constexpr double ZOOM_FACTOR = 1.1;
 
+    /** True when the previous ImGui frame had the mouse over a window. */
+    bool uiWantsMouse() {
+        return ImGui::GetCurrentContext() != nullptr && ImGui::GetIO().WantCaptureMouse;
+    }
+
 } // namespace
 
 GameWindow::GameWindow() {
@@ -101,7 +106,10 @@ bool GameWindow::processEvents(double frameSeconds, bool const blockMapInput) {
             }
         }
 
-        if (!blockMapInput && event.type == SDL_EVENT_MOUSE_WHEEL && event.wheel.windowID == SDL_GetWindowID(mWindow)) {
+        // Wheel zoom is suppressed only while the cursor is over an ImGui window, so economy
+        // windows scroll themselves without also zooming the map behind them.
+        if (!uiWantsMouse() && event.type == SDL_EVENT_MOUSE_WHEEL &&
+            event.wheel.windowID == SDL_GetWindowID(mWindow)) {
             double direction = static_cast<double>(event.wheel.y);
             if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
                 direction = -direction;

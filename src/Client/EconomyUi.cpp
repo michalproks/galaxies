@@ -551,7 +551,10 @@ void EconomyUi::drawModal(Client const &client) {
     ImGuiIO const &io = ImGui::GetIO();
     ImGui::SetNextWindowPos({io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F}, ImGuiCond_Appearing, {0.5F, 0.5F});
     ImGui::SetNextWindowSize({MODAL_WIDTH, MODAL_HEIGHT}, ImGuiCond_Appearing);
-    if (ImGui::BeginPopupModal("Colony Economy", &keepOpen, ImGuiWindowFlags_NoCollapse)) {
+    if (ImGui::BeginPopupModal("Colony Economy",
+                               &keepOpen,
+                               static_cast<ImGuiWindowFlags>(static_cast<unsigned>(ImGuiWindowFlags_NoCollapse) |
+                                                             static_cast<unsigned>(ImGuiWindowFlags_NoMove)))) {
         if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             keepOpen = false;
         }
