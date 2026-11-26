@@ -439,8 +439,8 @@ namespace {
         return result;
     }
 
-    void drawInvariants(DebugRecord const &record) {
-        ImGui::Begin("Economy invariants");
+    void drawInvariants(DebugRecord const &record, bool &open) {
+        ImGui::Begin(debugWindowTitle(DebugWindowId::INVARIANTS), &open);
         for (InvariantBadge const &badge : deriveInvariantBadges(record)) {
             ImGui::Text("[%s] %s - colony %lld, turn %lld: %s",
                         statusText(badge.state),
@@ -452,8 +452,8 @@ namespace {
         ImGui::End();
     }
 
-    void drawColony(DebugRecord const &record, bool &showDiff, ResourceId &selectedResource) {
-        ImGui::Begin("Colony inspector");
+    void drawColony(DebugRecord const &record, bool &openDiff, ResourceId &selectedResource, bool &open) {
+        ImGui::Begin(debugWindowTitle(DebugWindowId::COLONY), &open);
         ColonyEconomy const &state = record.afterState;
         ImGui::Text("Colony %lld - turn %lld | population %lld | households %zu | corporations %zu",
                     static_cast<long long>(record.colonyId.value),
@@ -632,14 +632,14 @@ namespace {
         }
         ImGui::Separator();
         if (ImGui::Button("Compare recorded turns"))
-            showDiff = true;
+            openDiff = true;
         ImGui::SameLine();
         ImGui::TextUnformatted("Record-level comparison only; the colony tick is not re-run.");
         ImGui::End();
     }
 
-    void drawMarket(DebugRecord const &record, ResourceId &resource) {
-        ImGui::Begin("Market inspector");
+    void drawMarket(DebugRecord const &record, ResourceId &resource, bool &open) {
+        ImGui::Begin(debugWindowTitle(DebugWindowId::MARKET), &open);
         char const *const names[] = {
             "Credits", "Labour", "Energy", "Food", "Materials", "Fuel", "Service", "Consumer goods"};
         int selected = static_cast<int>(resource);
@@ -738,8 +738,8 @@ namespace {
         ImGui::End();
     }
 
-    void drawPlanning(DebugRecord const &record, std::optional<CorporationId> &selectedId) {
-        ImGui::Begin("Planning inspector");
+    void drawPlanning(DebugRecord const &record, std::optional<CorporationId> &selectedId, bool &open) {
+        ImGui::Begin(debugWindowTitle(DebugWindowId::PLANNING), &open);
         auto const &corporations = record.afterState.corporations;
         if (corporations.empty()) {
             ImGui::TextUnformatted("No corporation state is retained.");
@@ -854,8 +854,8 @@ namespace {
         ImGui::End();
     }
 
-    void drawDiff(std::deque<DebugRecord> const &records, DebugRecord const &selected, bool &showDiff) {
-        ImGui::Begin("Replay / record diff");
+    void drawDiff(std::deque<DebugRecord> const &records, DebugRecord const &selected, bool &open) {
+        ImGui::Begin(debugWindowTitle(DebugWindowId::DIFF), &open);
         if (records.size() < 2) {
             ImGui::TextUnformatted("At least two retained turns are needed for a record diff.");
             ImGui::End();
@@ -865,7 +865,7 @@ namespace {
             selected.turnNumber == records.back().turnNumber ? &records[records.size() - 2] : &records.back();
         std::vector<DebugRecordChange> const changes = diffDebugRecords({selected, *other});
         if (ImGui::Button("Close diff"))
-            showDiff = false;
+            open = false;
         ImGui::Text("Turn %lld -> turn %lld: %zu changed fields",
                     static_cast<long long>(selected.turnNumber),
                     static_cast<long long>(other->turnNumber),
@@ -897,6 +897,26 @@ namespace {
     }
 
 } // namespace
+
+char const *debugWindowTitle(DebugWindowId window) noexcept {
+    switch (window) {
+    case DebugWindowId::COLONY:
+        return "Colony inspector";
+    case DebugWindowId::MARKET:
+        return "Market inspector";
+    case DebugWindowId::PLANNING:
+        return "Planning inspector";
+    case DebugWindowId::INVARIANTS:
+        return "Economy invariants";
+    case DebugWindowId::DIFF:
+        return "Replay / record diff";
+    case DebugWindowId::MAP_SELECTION:
+        return "Map selection";
+    case DebugWindowId::COUNT:
+        break;
+    }
+    return "Debug window";
+}
 
 std::int64_t clampDebugTurn(std::int64_t current, DebugTurnRange range) noexcept {
     if (range.firstTurn > range.lastTurn)
@@ -1015,10 +1035,18 @@ std::vector<DebugRecordChange> diffDebugRecords(DebugRecordPair records) {
 void DebugOverlay::draw(Client const &client,
                         Server::GameSnapshot const &snapshot,
                         std::optional<std::size_t> selectedBody) {
-    static bool visible{};
-    if (ImGui::IsKeyPressed(ImGuiKey_F9, false))
-        visible = !visible;
-    if (!visible)
+    if (ImGui::IsKeyPressed(ImGuiKey_F9, false)) {
+        if (!mVisible) {
+            mVisible = true;
+            mMenuOpen = true;
+        } else if (mMenuOpen) {
+            mVisible = false;
+            mMenuOpen = false;
+        } else {
+            mMenuOpen = true;
+        }
+    }
+    if (!mVisible)
         return;
 
     std::vector<ColonyId> ids;
@@ -1052,7 +1080,7 @@ void DebugOverlay::draw(Client const &client,
                                                                                    ImGuiWindowFlags_NoResize,
                                                                                    ImGuiWindowFlags_NoSavedSettings));
     ImGui::Begin("Economy turn scrubber", nullptr, FLAGS);
-    ImGui::TextUnformatted("Developer economy overlay (F9 to hide)");
+    ImGui::TextUnformatted("Developer economy overlay (F9 for the window menu)");
     std::vector<std::string> labels;
     labels.reserve(ids.size());
     std::vector<char const *> labelPointers;
@@ -1097,29 +1125,69 @@ void DebugOverlay::draw(Client const &client,
     ImGui::Text("Window %lld-%lld | Left/-> step, Shift+Left/-> step 10",
                 static_cast<long long>(first),
                 static_cast<long long>(last));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Debug windows"))
+        mMenuOpen = true;
     ImGui::End();
+
+    if (mMenuOpen) {
+        ImGui::SetNextWindowPos({io.DisplaySize.x * 0.5F, io.DisplaySize.y * 0.5F}, ImGuiCond_Appearing, {0.5F, 0.5F});
+        if (ImGui::Begin("Debug windows", &mMenuOpen)) {
+            ImGui::TextUnformatted("Select a window to open it; open windows are focused, not duplicated.");
+            for (std::size_t index = 0; index < static_cast<std::size_t>(DebugWindowId::COUNT); ++index) {
+                char const *const title = debugWindowTitle(static_cast<DebugWindowId>(index));
+                bool const isOpen = mWindowsOpen[index];
+                std::string const label = (isOpen ? "  " : "● ") + std::string(title);
+                if (ImGui::Selectable(label.c_str(), false)) {
+                    mWindowsOpen[index] = true;
+                    ImGui::SetWindowFocus(title);
+                    mMenuOpen = false;
+                }
+            }
+        }
+        ImGui::End();
+    }
+
+    std::size_t const mapIndex = static_cast<std::size_t>(DebugWindowId::MAP_SELECTION);
+    int appearedOrder{};
+    auto positionOnOpen = [&](DebugWindowId window) -> bool & {
+        float const offset = static_cast<float>(appearedOrder++) * 32.0F;
+        ImGui::SetNextWindowPos({io.DisplaySize.x * 0.08F + offset, io.DisplaySize.y * 0.1F + offset},
+                                ImGuiCond_Appearing);
+        return mWindowsOpen[static_cast<std::size_t>(window)];
+    };
+    if (mWindowsOpen[mapIndex]) {
+        bool &open = positionOnOpen(DebugWindowId::MAP_SELECTION);
+        if (ImGui::Begin(debugWindowTitle(DebugWindowId::MAP_SELECTION), &open)) {
+            if (selectedBody && *selectedBody < snapshot.bodies.size()) {
+                ImGui::Text("Selected: %s", snapshot.bodies[*selectedBody].name.c_str());
+                std::optional<ColonyId> const bodyColony = colonyIdForBody(snapshot, *selectedBody);
+                std::string const mappingStatus =
+                    bodyColony ? "Mapped to colony " + text(bodyColony->value) : "Selected body has no colony record.";
+                ImGui::TextUnformatted(mappingStatus.c_str());
+            } else {
+                ImGui::TextUnformatted("No body is selected on the map.");
+            }
+        }
+        ImGui::End();
+    }
 
     DebugRecord const *const record = debugRecordAtTurn({history.debugRecords, *mScrubTurn});
     if (record == nullptr)
         return;
-    if (selectedBody && *selectedBody < snapshot.bodies.size()) {
-        ImGui::Begin("Map selection");
-        ImGui::Text("Selected: %s", snapshot.bodies[*selectedBody].name.c_str());
-        std::optional<ColonyId> const bodyColony = colonyIdForBody(snapshot, *selectedBody);
-        std::string const mappingStatus =
-            bodyColony ? "Mapped to colony " + text(bodyColony->value) : "Selected body has no colony record.";
-        ImGui::TextUnformatted(mappingStatus.c_str());
-        ImGui::End();
-    }
-    static bool showDiff{};
     static ResourceId selectedResource{ResourceId::Food};
-    drawColony(*record, showDiff, selectedResource);
-    drawMarket(*record, selectedResource);
     static std::optional<CorporationId> selectedCorporation;
-    drawPlanning(*record, selectedCorporation);
-    drawInvariants(*record);
-    if (showDiff)
-        drawDiff(history.debugRecords, *record, showDiff);
+    std::size_t const diffIndex = static_cast<std::size_t>(DebugWindowId::DIFF);
+    if (mWindowsOpen[static_cast<std::size_t>(DebugWindowId::COLONY)])
+        drawColony(*record, mWindowsOpen[diffIndex], selectedResource, positionOnOpen(DebugWindowId::COLONY));
+    if (mWindowsOpen[static_cast<std::size_t>(DebugWindowId::MARKET)])
+        drawMarket(*record, selectedResource, positionOnOpen(DebugWindowId::MARKET));
+    if (mWindowsOpen[static_cast<std::size_t>(DebugWindowId::PLANNING)])
+        drawPlanning(*record, selectedCorporation, positionOnOpen(DebugWindowId::PLANNING));
+    if (mWindowsOpen[static_cast<std::size_t>(DebugWindowId::INVARIANTS)])
+        drawInvariants(*record, positionOnOpen(DebugWindowId::INVARIANTS));
+    if (mWindowsOpen[diffIndex])
+        drawDiff(history.debugRecords, *record, positionOnOpen(DebugWindowId::DIFF));
 }
 
 } // namespace Client

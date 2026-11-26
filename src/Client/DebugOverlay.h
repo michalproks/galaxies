@@ -4,6 +4,7 @@
 #include <Economy/EconomyRecords.h>
 #include <Server.h>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -58,6 +59,12 @@ struct DebugRecordQuery {
 /** Derives the invariant strip from fields retained in one diagnostic record. */
 [[nodiscard]] std::vector<InvariantBadge> deriveInvariantBadges(Simulation::Economy::DebugRecord const &record);
 
+/** Windows that the F9 debug menu can open, move, and close independently. */
+enum class DebugWindowId : std::uint8_t { COLONY, MARKET, PLANNING, INVARIANTS, DIFF, MAP_SELECTION, COUNT };
+
+/** Stable ImGui title for a debug window; also used to focus an already-open window. */
+[[nodiscard]] char const *debugWindowTitle(DebugWindowId window) noexcept;
+
 /** Two snapshots to compare, ordered from selected/older to comparison/newer. */
 struct DebugRecordPair {
     Simulation::Economy::DebugRecord const &selected;
@@ -67,7 +74,8 @@ struct DebugRecordPair {
 /** Produces a deterministic field-level diff grouped by economy pipeline stage. */
 [[nodiscard]] std::vector<DebugRecordChange> diffDebugRecords(DebugRecordPair records);
 
-/** Stateless renderer for the developer-only economy inspectors and turn scrubber. */
+/** Developer-only economy inspectors. F9 opens a menu; each chosen window is independently
+ *  movable, closable, and scrollable and is focused instead of duplicated when re-selected. */
 class DebugOverlay {
 public:
     /** Draws the overlay over an active ImGui frame; F9 toggles visibility without pausing simulation. */
@@ -76,6 +84,9 @@ public:
 private:
     std::optional<Simulation::Economy::ColonyId> mSelectedColony;
     std::optional<std::int64_t> mScrubTurn;
+    bool mVisible{};
+    bool mMenuOpen{};
+    std::array<bool, static_cast<std::size_t>(DebugWindowId::COUNT)> mWindowsOpen{};
 };
 
 } // namespace Client

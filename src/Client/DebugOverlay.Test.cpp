@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <set>
 #include <string>
 
 namespace {
@@ -45,6 +46,16 @@ struct RecordSeed {
 }
 
 } // namespace
+
+TEST_CASE("Debug window titles are unique per menu entry") {
+    std::set<std::string> titles;
+    for (std::size_t index = 0; index < static_cast<std::size_t>(Client::DebugWindowId::COUNT); ++index) {
+        std::string const title = Client::debugWindowTitle(static_cast<Client::DebugWindowId>(index));
+        REQUIRE(!title.empty());
+        titles.insert(title);
+    }
+    CHECK(titles.size() == static_cast<std::size_t>(Client::DebugWindowId::COUNT));
+}
 
 TEST_CASE("Debug scrub steps by one or ten turns and clamps to the retained window") {
     CHECK(Client::stepDebugTurn(15, {10, 30}, -1, false) == 14);
